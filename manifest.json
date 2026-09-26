@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "AutoFill PPAT Mitra Kerja",
+  "version": "1.0",
+  "description": "Ekstensi untuk mengisi otomatis data Penjual dan Pihak Persetujuan di web PPAT.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://ppat.atrbpn.go.id/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
