@@ -9,6 +9,8 @@ const database = {
             npwp: "0027724004515000",
             akta: "01", // Ini adalah Nomor Akta Pendirian
             tgl_akta: "02/08/2010",
+            tipe_pemilik: "33", // 33: Badan Usaha Milik Swasta (BUMS)
+            tipe_usaha: "4", // 4: Perseroan Terbatas (PT)
         },
         persetujuan: [
             {
@@ -49,6 +51,8 @@ const database = {
             npwp: "0999358021515000",
             akta: "01", // Ini adalah Nomor Akta Pendirian
             tgl_akta: "18/12/2023",
+            tipe_pemilik: "33", // 33: Badan Usaha Milik Swasta (BUMS)
+            tipe_usaha: "4", // 4: Perseroan Terbatas (PT)
         },
         persetujuan: [
             {
@@ -75,9 +79,73 @@ const database = {
     },
 };
 
+/**
+ * Normalisasi nama PT agar perbandingan tidak sensitif terhadap
+ * huruf besar/kecil, spasi ganda, titik, dan koma.
+ */
+function normalizeName(name) {
+    return (name || "")
+        .toUpperCase()
+        .replace(/[.,]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+/**
+ * Mencari key PT di database berdasarkan nama yang terbaca dari web.
+ */
+function findPtKeyByName(name) {
+    const target = normalizeName(name);
+    if (!target) return null;
+
+    // 1. Cocok persis
+    for (const key in database) {
+        if (normalizeName(database[key].penjual.nama) === target) return key;
+    }
+    // 2. Cocok sebagian (antisipasi tambahan teks/singkatan di web)
+    for (const key in database) {
+        const dbName = normalizeName(database[key].penjual.nama);
+        if (target.includes(dbName) || dbName.includes(target)) return key;
+    }
+    return null;
+}
+
+/**
+ * Dijalankan DI HALAMAN web PPAT: membaca nama-nama penjual yang sudah
+ * tercatat pada panel "Daftar Penjual" (#daftarpihak1placeholder).
+ */
+function readPenjualNamesFromPage() {
+    const names = [];
+    const items = document.querySelectorAll(
+        "#daftarpihak1placeholder blockquote.message",
+    );
+    items.forEach((bq) => {
+        // Isi blockquote: "Nama : PT XXX<br>Alamat : ...<br>Email : ..."
+        const lines = bq.innerHTML.split(/<br\s*\/?>/i);
+        for (const line of lines) {
+            const tmp = document.createElement("div");
+            tmp.innerHTML = line;
+            const text = (tmp.textContent || "").trim();
+            const match = text.match(/^Nama\s*:\s*(.+)$/i);
+            if (match) {
+                names.push(match[1].trim());
+                break;
+            }
+        }
+    });
+    return names;
+}
+
+async function getActiveTab() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     const selectPt = document.getElementById("select-pt");
     const selectPersetujuan = document.getElementById("select-persetujuan");
+    const detectStatus = document.getElementById("detect-status");
+    const btnRedetect = document.getElementById("btn-redetect");
 
     // Populate PT dropdown
     for (const key in database) {
@@ -87,13 +155,12 @@ document.addEventListener("DOMContentLoaded", () => {
         selectPt.appendChild(option);
     }
 
-    // Update Persetujuan dropdown based on selected PT
-    selectPt.addEventListener("change", (e) => {
-        const selectedPt = e.target.value;
+    // Isi dropdown Pihak Persetujuan sesuai PT terpilih
+    function renderPersetujuan(ptKey) {
         selectPersetujuan.innerHTML = "";
 
-        if (selectedPt && database[selectedPt]) {
-            database[selectedPt].persetujuan.forEach((orang, index) => {
+        if (ptKey && database[ptKey]) {
+            database[ptKey].persetujuan.forEach((orang, index) => {
                 let option = document.createElement("option");
                 option.value = index;
                 option.textContent = orang.nama + " (" + orang.id + ")";
@@ -103,7 +170,73 @@ document.addEventListener("DOMContentLoaded", () => {
             selectPersetujuan.innerHTML =
                 '<option value="">-- Pilih PT Dulu --</option>';
         }
+    }
+
+    function setStatus(text, type) {
+        detectStatus.textContent = text;
+        detectStatus.className = "status " + (type || "");
+    }
+
+    // Update Persetujuan dropdown based on selected PT
+    selectPt.addEventListener("change", (e) => {
+        renderPersetujuan(e.target.value);
     });
+
+    /**
+     * Membaca "Daftar Penjual" di web, lalu otomatis memilih PT yang cocok
+     * sehingga user cukup memilih nama Pihak Persetujuan.
+     * @returns {Promise<string|null>} key PT yang terdeteksi
+     */
+    async function detectPtFromPage() {
+        setStatus("Membaca data penjual di halaman...", "");
+        try {
+            const tab = await getActiveTab();
+            const results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: readPenjualNamesFromPage,
+            });
+            const names = (results && results[0] && results[0].result) || [];
+
+            if (names.length === 0) {
+                setStatus(
+                    "Penjual belum tercatat di web. Pilih PT secara manual.",
+                    "warn",
+                );
+                return null;
+            }
+
+            for (const name of names) {
+                const key = findPtKeyByName(name);
+                if (key) {
+                    selectPt.value = key;
+                    renderPersetujuan(key);
+                    setStatus("✔ Terdeteksi dari web: " + name, "ok");
+                    return key;
+                }
+            }
+
+            setStatus(
+                "Penjual di web (" + names.join(", ") + ") tidak ada di database.",
+                "warn",
+            );
+            return null;
+        } catch (err) {
+            console.warn("Deteksi PT gagal:", err);
+            setStatus(
+                "Tidak dapat membaca halaman. Buka halaman Akta di ppat.atrbpn.go.id.",
+                "warn",
+            );
+            return null;
+        }
+    }
+
+    btnRedetect.addEventListener("click", (e) => {
+        e.preventDefault();
+        detectPtFromPage();
+    });
+
+    // Deteksi otomatis saat popup dibuka
+    detectPtFromPage();
 
     // Execute autofill for Penjual
     document
@@ -112,10 +245,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const ptKey = selectPt.value;
             if (!ptKey) return alert("Pilih PT terlebih dahulu!");
 
-            let [tab] = await chrome.tabs.query({
-                active: true,
-                currentWindow: true,
-            });
+            const tab = await getActiveTab();
             chrome.scripting.executeScript(
                 {
                     target: { tabId: tab.id },
@@ -134,15 +264,19 @@ document.addEventListener("DOMContentLoaded", () => {
     document
         .getElementById("btn-fill-persetujuan")
         .addEventListener("click", async () => {
-            const ptKey = selectPt.value;
-            const indexPersetujuan = selectPersetujuan.value;
-            if (!ptKey || indexPersetujuan === "")
-                return alert("Pilih PT dan Pihak Persetujuan!");
+            let ptKey = selectPt.value;
 
-            let [tab] = await chrome.tabs.query({
-                active: true,
-                currentWindow: true,
-            });
+            // Jika PT belum terpilih, coba deteksi ulang dari halaman
+            if (!ptKey) {
+                ptKey = await detectPtFromPage();
+                if (!ptKey) return alert("PT penjual tidak terdeteksi. Pilih PT terlebih dahulu!");
+            }
+
+            const indexPersetujuan = selectPersetujuan.value;
+            if (indexPersetujuan === "")
+                return alert("Pilih Pihak Persetujuan!");
+
+            const tab = await getActiveTab();
             chrome.scripting.executeScript(
                 {
                     target: { tabId: tab.id },

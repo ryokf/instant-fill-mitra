@@ -11,10 +11,16 @@
     button { background-color: #26B99A; color: white; border: none; cursor: pointer; border-radius: 3px; margin-top: 5px;}
     button:hover { background-color: #169F85; }
     .divider { border-top: 1px dashed #ccc; margin: 15px 0; }
+    .status { font-size: 11px; padding: 6px 8px; border-radius: 3px; margin-bottom: 10px; background: #f2f2f2; color: #555; }
+    .status.ok { background: #e6f7f2; color: #137a63; }
+    .status.warn { background: #fff4e0; color: #8a5a00; }
+    .redetect { font-size: 11px; color: #26B99A; cursor: pointer; text-decoration: underline; float: right; }
   </style>
 </head>
 <body>
-  <h3>AutoFill Akta Jual Beli</h3>
+  <h3>AutoFill Akta Jual Beli <a id="btn-redetect" class="redetect" title="Baca ulang Daftar Penjual di halaman">Deteksi ulang</a></h3>
+
+  <div id="detect-status" class="status">Membaca data penjual di halaman...</div>
   
   <div class="form-group">
     <label>Pilih Penjual (PT):</label>
