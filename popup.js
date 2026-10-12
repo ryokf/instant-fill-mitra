@@ -216,61 +216,104 @@ document.addEventListener("DOMContentLoaded", () => {
         renderPersetujuan(e.target.value);
     });
 
+    // Hasil deteksi terakhir, agar UI hanya diperbarui bila ada perubahan
+    // (supaya pilihan manual & highlight nama tidak ter-reset oleh pengecekan berkala)
+    let lastDetectSignature = null;
+
     /**
      * Membaca "Daftar Penjual" di web, lalu otomatis memilih PT yang cocok
      * sehingga user cukup memilih nama Pihak Persetujuan.
+     * @param {boolean} force paksa perbarui UI walau hasil sama
      * @returns {Promise<string|null>} key PT yang terdeteksi
      */
-    async function detectPtFromPage() {
-        setStatus("Membaca data penjual di halaman...", "");
+    async function detectPtFromPage(force = false) {
+        let signature, apply;
         try {
             const tab = await getActiveTab();
-            const results = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: readPenjualNamesFromPage,
-            });
-            const names = (results && results[0] && results[0].result) || [];
+            if (!tab || !tab.url || !tab.url.startsWith("https://ppat.atrbpn.go.id/")) {
+                signature = "not-ppat";
+                apply = () =>
+                    setStatus(
+                        "Buka halaman Akta di ppat.atrbpn.go.id untuk deteksi otomatis.",
+                        "warn",
+                    );
+            } else {
+                const results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: readPenjualNamesFromPage,
+                });
+                const names = (results && results[0] && results[0].result) || [];
 
-            if (names.length === 0) {
-                setStatus(
-                    "Penjual belum tercatat di web. Pilih PT secara manual.",
-                    "warn",
-                );
-                return null;
-            }
+                if (names.length === 0) {
+                    signature = "tab:" + tab.id + "|empty";
+                    apply = () =>
+                        setStatus(
+                            "Penjual belum tercatat di web. Pilih PT secara manual.",
+                            "warn",
+                        );
+                } else {
+                    let foundKey = null, foundName = null;
+                    for (const name of names) {
+                        const key = findPtKeyByName(name);
+                        if (key) {
+                            foundKey = key;
+                            foundName = name;
+                            break;
+                        }
+                    }
 
-            for (const name of names) {
-                const key = findPtKeyByName(name);
-                if (key) {
-                    selectPt.value = key;
-                    renderPersetujuan(key);
-                    setStatus("✔ Terdeteksi dari web: " + name, "ok");
-                    return key;
+                    if (foundKey) {
+                        signature = "tab:" + tab.id + "|pt:" + foundKey;
+                        apply = () => {
+                            selectPt.value = foundKey;
+                            renderPersetujuan(foundKey);
+                            setStatus("✔ Terdeteksi dari web: " + foundName, "ok");
+                        };
+                    } else {
+                        signature = "tab:" + tab.id + "|unknown:" + names.join(",");
+                        apply = () =>
+                            setStatus(
+                                "Penjual di web (" + names.join(", ") + ") tidak ada di database.",
+                                "warn",
+                            );
+                    }
                 }
             }
-
-            setStatus(
-                "Penjual di web (" + names.join(", ") + ") tidak ada di database.",
-                "warn",
-            );
-            return null;
         } catch (err) {
-            console.warn("Deteksi PT gagal:", err);
-            setStatus(
-                "Tidak dapat membaca halaman. Buka halaman Akta di ppat.atrbpn.go.id.",
-                "warn",
-            );
-            return null;
+            signature = "error";
+            apply = () =>
+                setStatus(
+                    "Tidak dapat membaca halaman. Buka halaman Akta di ppat.atrbpn.go.id.",
+                    "warn",
+                );
         }
+
+        if (force || signature !== lastDetectSignature) {
+            lastDetectSignature = signature;
+            apply();
+        }
+        return signature.includes("|pt:") ? selectPt.value : null;
     }
 
     btnRedetect.addEventListener("click", (e) => {
         e.preventDefault();
-        detectPtFromPage();
+        detectPtFromPage(true);
     });
 
-    // Deteksi otomatis saat popup dibuka
-    detectPtFromPage();
+    // Deteksi otomatis saat panel dibuka
+    detectPtFromPage(true);
+
+    // Panel selalu terbuka, jadi deteksi ulang ketika:
+    // 1. pindah tab
+    chrome.tabs.onActivated.addListener(() => detectPtFromPage());
+    // 2. halaman selesai dimuat / dimuat ulang
+    chrome.tabs.onUpdated.addListener((tabId, info) => {
+        if (info.status === "complete") detectPtFromPage();
+    });
+    // 3. berkala, untuk menangkap penjual yang baru ditambahkan via AJAX
+    setInterval(() => {
+        if (document.visibilityState === "visible") detectPtFromPage();
+    }, 3000);
 
     // Execute autofill for Penjual
     document

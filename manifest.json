@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AutoFill PPAT Mitra Kerja",
-  "version": "1.0",
-  "description": "Ekstensi untuk mengisi otomatis data Penjual dan Pihak Persetujuan di web PPAT.",
+  "version": "1.2",
+  "description": "Ekstensi panel melayang untuk mengisi otomatis data Penjual dan Pihak Persetujuan di web PPAT.",
   "permissions": [
     "activeTab",
     "scripting"
@@ -10,7 +10,17 @@
   "host_permissions": [
     "https://ppat.atrbpn.go.id/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://ppat.atrbpn.go.id/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
   "action": {
-    "default_popup": "popup.html"
+    "default_title": "Buka / Tutup Panel AutoFill PPAT"
   }
 }
