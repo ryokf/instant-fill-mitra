@@ -143,7 +143,7 @@ async function getActiveTab() {
 
 document.addEventListener("DOMContentLoaded", () => {
     const selectPt = document.getElementById("select-pt");
-    const selectPersetujuan = document.getElementById("select-persetujuan");
+    const listPersetujuan = document.getElementById("list-persetujuan");
     const detectStatus = document.getElementById("detect-status");
     const btnRedetect = document.getElementById("btn-redetect");
 
@@ -155,21 +155,55 @@ document.addEventListener("DOMContentLoaded", () => {
         selectPt.appendChild(option);
     }
 
-    // Isi dropdown Pihak Persetujuan sesuai PT terpilih
+    // Tampilkan daftar Pihak Persetujuan (bisa diklik) sesuai PT terpilih
     function renderPersetujuan(ptKey) {
-        selectPersetujuan.innerHTML = "";
+        listPersetujuan.innerHTML = "";
 
-        if (ptKey && database[ptKey]) {
-            database[ptKey].persetujuan.forEach((orang, index) => {
-                let option = document.createElement("option");
-                option.value = index;
-                option.textContent = orang.nama + " (" + orang.id + ")";
-                selectPersetujuan.appendChild(option);
-            });
-        } else {
-            selectPersetujuan.innerHTML =
-                '<option value="">-- Pilih PT Dulu --</option>';
+        if (!ptKey || !database[ptKey]) {
+            const li = document.createElement("li");
+            li.className = "empty";
+            li.textContent = "-- Pilih PT Dulu --";
+            listPersetujuan.appendChild(li);
+            return;
         }
+
+        database[ptKey].persetujuan.forEach((orang, index) => {
+            const li = document.createElement("li");
+            li.title = "Klik untuk mengisi form Pihak Persetujuan";
+            li.textContent = orang.nama;
+
+            const nik = document.createElement("span");
+            nik.className = "nik";
+            nik.textContent = "NIK " + orang.nik;
+            li.appendChild(nik);
+
+            li.addEventListener("click", () => {
+                listPersetujuan
+                    .querySelectorAll("li.active")
+                    .forEach((el) => el.classList.remove("active"));
+                li.classList.add("active");
+                fillPersetujuan(ptKey, index);
+            });
+
+            listPersetujuan.appendChild(li);
+        });
+    }
+
+    // Kirim data Pihak Persetujuan ke halaman web
+    async function fillPersetujuan(ptKey, index) {
+        const tab = await getActiveTab();
+        chrome.scripting.executeScript(
+            {
+                target: { tabId: tab.id },
+                files: ["content.js"],
+            },
+            () => {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: "fillPersetujuan",
+                    data: database[ptKey].persetujuan[index],
+                });
+            },
+        );
     }
 
     function setStatus(text, type) {
@@ -255,37 +289,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     chrome.tabs.sendMessage(tab.id, {
                         action: "fillPenjual",
                         data: database[ptKey].penjual,
-                    });
-                },
-            );
-        });
-
-    // Execute autofill for Pihak Persetujuan
-    document
-        .getElementById("btn-fill-persetujuan")
-        .addEventListener("click", async () => {
-            let ptKey = selectPt.value;
-
-            // Jika PT belum terpilih, coba deteksi ulang dari halaman
-            if (!ptKey) {
-                ptKey = await detectPtFromPage();
-                if (!ptKey) return alert("PT penjual tidak terdeteksi. Pilih PT terlebih dahulu!");
-            }
-
-            const indexPersetujuan = selectPersetujuan.value;
-            if (indexPersetujuan === "")
-                return alert("Pilih Pihak Persetujuan!");
-
-            const tab = await getActiveTab();
-            chrome.scripting.executeScript(
-                {
-                    target: { tabId: tab.id },
-                    files: ["content.js"],
-                },
-                () => {
-                    chrome.tabs.sendMessage(tab.id, {
-                        action: "fillPersetujuan",
-                        data: database[ptKey].persetujuan[indexPersetujuan],
                     });
                 },
             );

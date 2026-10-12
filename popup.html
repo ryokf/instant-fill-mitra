@@ -15,6 +15,16 @@
     .status.ok { background: #e6f7f2; color: #137a63; }
     .status.warn { background: #fff4e0; color: #8a5a00; }
     .redetect { font-size: 11px; color: #26B99A; cursor: pointer; text-decoration: underline; float: right; }
+    .hint { font-weight: normal; color: #888; font-size: 11px; }
+    .person-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; border: 1px solid #ddd; border-radius: 3px; }
+    .person-list li { padding: 7px 9px; border-bottom: 1px solid #eee; font-size: 12px; cursor: pointer; }
+    .person-list li:last-child { border-bottom: none; }
+    .person-list li:hover { background: #e6f7f2; }
+    .person-list li.active { background: #26B99A; color: #fff; }
+    .person-list li .nik { display: block; font-size: 10px; color: #888; margin-top: 2px; }
+    .person-list li.active .nik { color: #e6f7f2; }
+    .person-list li.empty { cursor: default; color: #999; font-style: italic; }
+    .person-list li.empty:hover { background: none; }
   </style>
 </head>
 <body>
@@ -33,11 +43,10 @@
   <div class="divider"></div>
 
   <div class="form-group">
-    <label>Pilih Pihak Persetujuan:</label>
-    <select id="select-persetujuan">
-      <option value="">-- Pilih PT Dulu --</option>
-    </select>
-    <button id="btn-fill-persetujuan">Isi Form Persetujuan</button>
+    <label>Pihak Persetujuan <span class="hint">(klik nama untuk mengisi form)</span>:</label>
+    <ul id="list-persetujuan" class="person-list">
+      <li class="empty">-- Pilih PT Dulu --</li>
+    </ul>
   </div>
 
   <script src="popup.js"></script>
