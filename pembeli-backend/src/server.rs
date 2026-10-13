@@ -119,7 +119,7 @@ async fn extract_pembeli_handler(
         };
 
         let res = rt.block_on(async {
-            process_akta_pdf(&path_clone, 2.0, None)
+            process_akta_pdf(&path_clone, 1.5, None)
                 .await
                 .map_err(|e| e.to_string())
         });

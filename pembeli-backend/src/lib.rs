@@ -8,8 +8,9 @@ use windows::Data::Pdf::{PdfDocument, PdfPageRenderOptions};
 use windows::Graphics::Imaging::BitmapDecoder;
 use windows::Media::Ocr::OcrEngine;
 use windows::Storage::StorageFile;
-use windows::Storage::Streams::{DataReader, InMemoryRandomAccessStream};
-
+use windows::Storage::Streams::{DataReader, DataWriter, InMemoryRandomAccessStream};
+use std::io::Cursor;
+use image::ImageEncoder;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CropResult {
     pub success: bool,
@@ -42,20 +43,28 @@ async fn render_pdf_page(doc: &PdfDocument, page_index: u32, scale: f32) -> Resu
     Ok(dyn_img)
 }
 
-/// Jalankan OCR pada citra RGBA menggunakan Windows.Media.Ocr untuk mendapatkan baris teks
-async fn run_ocr_on_image(img: &RgbaImage, engine: &OcrEngine, page_idx: usize) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let temp_file = std::env::temp_dir().join(format!("ocr_tmp_{}_{}.png", std::process::id(), page_idx));
-    img.save(&temp_file)?;
+/// Jalankan OCR pada citra RGBA menggunakan Windows.Media.Ocr untuk mendapatkan baris teks secara langsung dalam memori (tanpa disk)
+async fn run_ocr_on_image(img: &RgbaImage, engine: &OcrEngine, _page_idx: usize) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut bmp_buf = Cursor::new(Vec::with_capacity((img.width() * img.height() * 4 + 1024) as usize));
+    image::codecs::bmp::BmpEncoder::new(&mut bmp_buf).write_image(
+        img.as_raw(),
+        img.width(),
+        img.height(),
+        image::ExtendedColorType::Rgba8,
+    )?;
+    let bmp_bytes = bmp_buf.into_inner();
 
-    let abs_path = std::fs::canonicalize(&temp_file)?;
-    let path_str = abs_path.to_str().unwrap().trim_start_matches(r"\\?\");
-    let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path_str))?.await?;
-    let stream = file.OpenAsync(windows::Storage::FileAccessMode::Read)?.await?;
-    let decoder = BitmapDecoder::CreateAsync(&stream)?.await?;
+    let mem_stream = InMemoryRandomAccessStream::new()?;
+    let writer = DataWriter::CreateDataWriter(&mem_stream)?;
+    writer.WriteBytes(&bmp_bytes)?;
+    writer.StoreAsync()?.await?;
+    writer.DetachStream()?;
+    mem_stream.Seek(0)?;
+
+    let decoder = BitmapDecoder::CreateAsync(&mem_stream)?.await?;
     let bitmap = decoder.GetSoftwareBitmapAsync()?.await?;
 
     let result = engine.RecognizeAsync(&bitmap)?.await?;
-    let _ = std::fs::remove_file(&temp_file);
 
     let mut lines_out = Vec::new();
     for line in result.Lines()? {
@@ -123,14 +132,41 @@ pub async fn process_akta_pdf(
     let mut pages_data: Vec<(Vec<String>, u32)> = Vec::new(); // (lines, rotation)
     let mut end_location: Option<(usize, usize)> = None; // (page_idx, line_idx)
 
-    for page_idx in 0..total_pages {
-        let dyn_img = render_pdf_page(&doc, page_idx as u32, scale).await?;
+    async fn render_and_prepare_page(doc: &PdfDocument, page_idx: u32, scale: f32) -> Result<(RgbaImage, u32), String> {
+        let dyn_img = render_pdf_page(doc, page_idx, scale).await.map_err(|e| e.to_string())?;
         let (raw_w, raw_h) = (dyn_img.width(), dyn_img.height());
-
         let (upright_img, rot) = if raw_w > raw_h {
             (imageops::rotate270(&dyn_img), 270)
         } else {
             (dyn_img.to_rgba8(), 0)
+        };
+        Ok((upright_img, rot))
+    }
+
+    let mut current_render_task = if total_pages > 0 {
+        let doc_clone = doc.clone();
+        Some(tokio::spawn(async move {
+            render_and_prepare_page(&doc_clone, 0, scale).await
+        }))
+    } else {
+        None
+    };
+
+    for page_idx in 0..total_pages {
+        let (upright_img, rot) = match current_render_task.take() {
+            Some(task) => task.await.map_err(|e| e.to_string())??,
+            None => render_and_prepare_page(&doc, page_idx as u32, scale).await?,
+        };
+
+        // Pipelining: Render halaman berikutnya di background selagi OCR halaman ini berjalan
+        let next_idx = page_idx + 1;
+        let next_render_task = if next_idx < total_pages {
+            let doc_clone = doc.clone();
+            Some(tokio::spawn(async move {
+                render_and_prepare_page(&doc_clone, next_idx as u32, scale).await
+            }))
+        } else {
+            None
         };
 
         let lines = run_ocr_on_image(&upright_img, &engine, page_idx).await?;
@@ -146,8 +182,13 @@ pub async fn process_akta_pdf(
         pages_data.push((lines, rot));
 
         if end_location.is_some() {
+            if let Some(task) = next_render_task {
+                task.abort();
+            }
             break;
         }
+
+        current_render_task = next_render_task;
     }
 
     let (end_page_idx, end_line_idx) = end_location.ok_or("Bagian data pembeli tidak ditemukan dalam dokumen akta.")?;

@@ -38,8 +38,8 @@ struct Cli {
     #[arg(long)]
     id: Option<String>,
 
-    /// Skala resolusi rendering PDF (default: 2.0)
-    #[arg(long, default_value_t = 2.0)]
+    /// Skala resolusi rendering PDF (default: 1.5)
+    #[arg(long, default_value_t = 1.5)]
     scale: f32,
 
     /// Hapus semua dummy, sample data, dan output sementara dari proyek ini
