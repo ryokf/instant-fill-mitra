@@ -227,12 +227,15 @@ PPAT.panel = (() => {
 
                 if (response.ok && result.success && result.data) {
                     lastPembeliData = result.data;
-                    setUploadStatus(`✔ Berhasil mengekstrak: ${result.data.nama}`, "ok");
+                    setUploadStatus(`✔ Data ${result.data.nama} terisi ke form. Silakan review & klik Tambah.`, "ok");
                     renderPembeliCard(result.data);
 
-                    // Langsung otomatis isi ke form di web PPAT
+                    // Langsung otomatis isi ke form di web PPAT (khusus pembeli tidak auto-submit agar bisa direview)
                     if (PPAT.pembeliFiller) {
-                        await PPAT.pembeliFiller.fill(result.data, { autoSubmit: isAutoSubmit() });
+                        await PPAT.pembeliFiller.fill(result.data, {
+                            autoSubmit: false,
+                            scrollIntoView: true,
+                        });
                     }
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";
@@ -281,7 +284,10 @@ PPAT.panel = (() => {
         if (btnFillPembeli) {
             btnFillPembeli.addEventListener("click", () => {
                 if (lastPembeliData && PPAT.pembeliFiller) {
-                    PPAT.pembeliFiller.fill(lastPembeliData, { autoSubmit: isAutoSubmit() });
+                    PPAT.pembeliFiller.fill(lastPembeliData, {
+                        autoSubmit: false,
+                        scrollIntoView: true,
+                    });
                 }
             });
         }

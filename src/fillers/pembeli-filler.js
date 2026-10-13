@@ -7,7 +7,8 @@ PPAT.pembeliFiller = (() => {
     const S = SELECTORS.pembeli;
 
     async function fill(data, options = {}) {
-        const autoSubmit = options.autoSubmit ?? true;
+        // Khusus pihak pembeli: jangan auto-submit agar pengguna dapat mereview data terlebih dahulu
+        const autoSubmit = options.autoSubmit ?? false;
 
         const form = await dom.waitForElement(S.form, TIMING.PEMBELI_FORM_TIMEOUT_MS);
         if (!form) {
@@ -19,13 +20,18 @@ PPAT.pembeliFiller = (() => {
         dom.setSelect2Value(S.tipeBukti, data.tipe_bukti || DEFAULTS.TIPE_BUKTI_PEMBELI);
         dom.fillFields(S.fields, data);
 
+        // Arahkan scroll ke posisi form agar pengguna langsung melihat data untuk direview
+        if (options.scrollIntoView ?? true) {
+            form.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
         if (autoSubmit) {
             await dom.delay(TIMING.SUBMIT_DELAY_MS);
             const submitBtn = document.querySelector(S.btnTambah);
             if (submitBtn) {
                 submitBtn.click();
             }
-        } else {
+        } else if (options.showAlert) {
             alert(MESSAGES.pembeliFilled(data.nama));
         }
 
