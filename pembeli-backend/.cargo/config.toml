@@ -1,0 +1,2 @@
+[alias]
+clean-data = "run -- --clean"
