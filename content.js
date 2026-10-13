@@ -79,6 +79,50 @@ const database = {
     },
 };
 
+// Database Pihak Saksi (Independen / tidak terikat oleh PT atau data manapun)
+const databaseSaksi = [
+    {
+        id: "1",
+        nik: "3315166105990001",
+        nama: "NURUL HIKMAH",
+        alamat: "Rejosari, RT 003 / RW 003, Desa Botorejo, Kecamatan Wonosalam, Kabupaten Demak",
+        tempat_lahir: "Grobogan",
+        tgl_lahir: "21/05/1999",
+        pekerjaan: "Wiraswasta",
+        tipe_bukti: "1", // 1: KTP
+    },
+    {
+        id: "2",
+        nik: "3321046311970003",
+        nama: "NOVIA MAHARSARI",
+        alamat: "Dukuh Ngobongan, RT 003 / RW 003, Desa Tanjungsekar, Kecamatan Pucakwangi, Kabupaten Pati",
+        tempat_lahir: "Semarang",
+        tgl_lahir: "23/11/1997",
+        pekerjaan: "Pelajar / Mahasiswa",
+        tipe_bukti: "1", // 1: KTP
+    },
+    {
+        id: "3",
+        nik: "3404021708990001",
+        nama: "RIDHWAN NUR CAHYO SAPUTRO",
+        alamat: "Jetis Prenggan, RT 001/RW 018, Desa Sidokarto, Kecamatan Godean, Kabupaten Sleman",
+        tempat_lahir: "Sleman",
+        tgl_lahir: "17/08/1999",
+        pekerjaan: "Pelajar / Mahasiswa",
+        tipe_bukti: "1", // 1: KTP
+    },
+    {
+        id: "4",
+        nik: "3321040608940002",
+        nama: "MUHAMMAD RIEFKY ABDILLAH",
+        alamat: "Jl. Kapas Timur VIII D G.1061, RT 004/RW 008, Kelurahan Gebangsari, Kecamatan Genuk, Kota Semarang",
+        tempat_lahir: "Demak",
+        tgl_lahir: "06/08/1994",
+        pekerjaan: "Karyawan Swasta",
+        tipe_bukti: "1", // 1: KTP
+    },
+];
+
 /**
  * Normalisasi nama untuk pencocokan toleran
  */
@@ -285,6 +329,30 @@ async function handleFillPersetujuan(data) {
     fillField("#frmPihaksetujuDukcapil #tJENIS_PEKERJAAN", data.pekerjaan);
 
     alert("Data Pihak Persetujuan berhasil diisi!\nSilakan periksa dan klik 'Tambah'.");
+}
+
+/**
+ * Logika pengisian otomatis Form Pihak Saksi (Bagian M)
+ */
+async function handleFillSaksi(data) {
+    const formLoaded = await waitForElement("#frmSaksiDukcapil", 5000);
+    if (!formLoaded) {
+        alert("Form Saksi tidak ditemukan. Pastikan Anda berada di halaman pembuatan Akta PPAT.");
+        return;
+    }
+
+    // Pilih Jenis Bukti Identitas: 1 = KTP
+    setSelect2Value("#frmSaksiDukcapil select#tipebuktisaksi1", data.tipe_bukti || "1");
+
+    // Isi field form Saksi
+    fillField("#tNIKsaksi", data.nik);
+    fillField("#tNAMA_LENGKAPsaksi", data.nama);
+    fillField("#tALAMATsaksi", data.alamat);
+    fillField("#tTEMPAT_LAHIRsaksi", data.tempat_lahir);
+    fillField("#tTANGGAL_LAHIRsaksi", data.tgl_lahir);
+    fillField("#tJENIS_PEKERJAANsaksi", data.pekerjaan);
+
+    alert("Data Saksi (" + data.nama + ") berhasil diisi!\nSilakan periksa dan klik 'Tambah'.");
 }
 
 // =============================================================================
@@ -525,6 +593,13 @@ function createInPagePanel() {
                         <li class="empty">-- Pilih PT Dulu --</li>
                     </ul>
                 </div>
+
+                <div class="ppat-divider"></div>
+
+                <div class="ppat-form-group">
+                    <label class="ppat-label">Pihak Saksi <span style="font-weight:normal;color:#888;">(klik langsung isi)</span>:</label>
+                    <ul id="ppat-list-saksi" class="ppat-person-list"></ul>
+                </div>
             </div>
         </div>
     `;
@@ -538,6 +613,7 @@ function createInPagePanel() {
     const btnClose = document.getElementById("ppat-btn-close");
     const selectPt = document.getElementById("ppat-select-pt");
     const listPersetujuan = document.getElementById("ppat-list-persetujuan");
+    const listSaksi = document.getElementById("ppat-list-saksi");
     const statusBox = document.getElementById("ppat-detect-status");
     const statusText = document.getElementById("ppat-status-text");
     const btnRedetect = document.getElementById("ppat-btn-redetect");
@@ -598,6 +674,42 @@ function createInPagePanel() {
             listPersetujuan.appendChild(li);
         });
     }
+
+    // Tampilkan daftar nama Pihak Saksi (tidak terikat PT manapun)
+    function renderSaksiList() {
+        listSaksi.innerHTML = "";
+
+        if (!databaseSaksi || databaseSaksi.length === 0) {
+            const li = document.createElement("li");
+            li.className = "empty";
+            li.textContent = "-- Belum ada data saksi --";
+            listSaksi.appendChild(li);
+            return;
+        }
+
+        databaseSaksi.forEach((saksi) => {
+            const li = document.createElement("li");
+            li.title = "Klik untuk mengisi form Pihak Saksi";
+            li.textContent = saksi.nama;
+
+            const nikSpan = document.createElement("span");
+            nikSpan.className = "nik";
+            nikSpan.textContent = "NIK: " + saksi.nik;
+            li.appendChild(nikSpan);
+
+            li.addEventListener("click", () => {
+                listSaksi
+                    .querySelectorAll("li.active")
+                    .forEach((el) => el.classList.remove("active"));
+                li.classList.add("active");
+                handleFillSaksi(saksi);
+            });
+
+            listSaksi.appendChild(li);
+        });
+    }
+
+    renderSaksiList();
 
     function setStatus(text, type) {
         statusText.textContent = text;
