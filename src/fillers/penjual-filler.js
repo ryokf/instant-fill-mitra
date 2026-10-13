@@ -31,7 +31,9 @@ PPAT.penjualFiller = (() => {
         return true;
     }
 
-    async function fill(data) {
+    async function fill(data, options = {}) {
+        const autoSubmit = options.autoSubmit ?? true;
+
         if (!(await ensureBadanHukumForm())) {
             alert(MESSAGES.penjualFormMissing);
             return;
@@ -41,7 +43,15 @@ PPAT.penjualFiller = (() => {
         dom.setSelect2Value(S.tipeUsaha, data.tipe_usaha || DEFAULTS.TIPE_USAHA);
         dom.fillFields(S.fields, data);
 
-        alert(MESSAGES.penjualFilled);
+        if (autoSubmit) {
+            await dom.delay(TIMING.SUBMIT_DELAY_MS);
+            const submitBtn = document.querySelector(S.btnTambah);
+            if (submitBtn) {
+                submitBtn.click();
+            }
+        } else {
+            alert(MESSAGES.penjualFilled);
+        }
     }
 
     return { fill };

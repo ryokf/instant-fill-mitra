@@ -14,7 +14,8 @@ PPAT.panel = (() => {
     });
 
     function create() {
-        if (document.getElementById(panelTemplate.IDS.root)) return;
+        const existing = document.getElementById(panelTemplate.IDS.root);
+        if (existing) existing.remove();
 
         document.body.appendChild(panelTemplate.createRoot());
         const els = panelTemplate.queryElements();
@@ -26,6 +27,12 @@ PPAT.panel = (() => {
         setupPtSelection(els);
         setupAutoDetection(els);
         setupFillPenjualButton(els);
+    }
+
+    /** Memeriksa apakah opsi otomatis klik "Tambah" sedang aktif di panel. */
+    function isAutoSubmit() {
+        const chk = document.getElementById(panelTemplate.IDS.chkAutoSubmit);
+        return chk ? chk.checked : true;
     }
 
     // -------------------------------------------------------------------------
@@ -71,7 +78,7 @@ PPAT.panel = (() => {
         personList.render(listEl, pt ? pt.persetujuan : [], {
             emptyMessage: "-- Pilih PT Dulu --",
             tooltip: "Klik untuk mengisi form Pihak Persetujuan",
-            onSelect: PPAT.persetujuanFiller.fill,
+            onSelect: (orang) => PPAT.persetujuanFiller.fill(orang, { autoSubmit: isAutoSubmit() }),
         });
     }
 
@@ -80,13 +87,18 @@ PPAT.panel = (() => {
         personList.render(listEl, PPAT.saksiDatabase, {
             emptyMessage: "-- Belum ada data saksi --",
             tooltip: "Klik untuk mengisi form Pihak Saksi",
-            onSelect: PPAT.saksiFiller.fill,
+            onSelect: (saksi) => PPAT.saksiFiller.fill(saksi, { autoSubmit: isAutoSubmit() }),
         });
     }
 
     function setupPtSelection({ selectPt, listPersetujuan }) {
         selectPt.addEventListener("change", (e) => {
-            renderPersetujuanList(listPersetujuan, e.target.value);
+            const ptKey = e.target.value;
+            renderPersetujuanList(listPersetujuan, ptKey);
+            // Saat user memilih PT di dropdown, langsung isi form dan klik "Tambah"
+            if (ptKey && PPAT.ptDatabase[ptKey]) {
+                PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual, { autoSubmit: isAutoSubmit() });
+            }
         });
     }
 
@@ -94,7 +106,7 @@ PPAT.panel = (() => {
         btnFillPenjual.addEventListener("click", () => {
             const ptKey = selectPt.value;
             if (!ptKey) return alert(MESSAGES.selectPtFirst);
-            PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual);
+            PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual, { autoSubmit: isAutoSubmit() });
         });
     }
 

@@ -6,7 +6,9 @@ PPAT.persetujuanFiller = (() => {
     const { SELECTORS, TIMING, MESSAGES } = config;
     const S = SELECTORS.persetujuan;
 
-    async function fill(data) {
+    async function fill(data, options = {}) {
+        const autoSubmit = options.autoSubmit ?? true;
+
         const form = await dom.waitForElement(S.form, TIMING.PERSETUJUAN_FORM_TIMEOUT_MS);
         if (!form) {
             alert(MESSAGES.persetujuanFormMissing);
@@ -15,7 +17,15 @@ PPAT.persetujuanFiller = (() => {
 
         dom.fillFields(S.fields, data);
 
-        alert(MESSAGES.persetujuanFilled);
+        if (autoSubmit) {
+            await dom.delay(TIMING.SUBMIT_DELAY_MS);
+            const submitBtn = document.querySelector(S.btnTambah);
+            if (submitBtn) {
+                submitBtn.click();
+            }
+        } else {
+            alert(MESSAGES.persetujuanFilled);
+        }
     }
 
     return { fill };

@@ -77,4 +77,29 @@ PPAT.ptDatabase = {
             },
         ],
     },
+    PT_YUDHA_MUDA_SAKTI: {
+        penjual: {
+            nama: "PT YUDHA MUDA SAKTI",
+            alamat:
+                "Jl. Subali Raya No. 248, RT 007, RW 008, Kelurahan Krapyak, Kecamatan Semarang Barat, Kota Semarang, Jawa Tengah",
+            kota: "Semarang",
+            npwp: "0934454422503000",
+            akta: "04", // Ini adalah Nomor Akta Pendirian
+            tgl_akta: "08/11/2019",
+            tipe_pemilik: "33", // 33: Badan Usaha Milik Swasta (BUMS)
+            tipe_usaha: "4", // 4: Perseroan Terbatas (PT)
+        },
+        persetujuan: [
+            {
+                id: "1",
+                nik: "3374132902000007",
+                nama: "GREGORIUS I GEDE SATRIA WIRA YUDA",
+                alamat:
+                    "Jalan Subali Raya Nomor 248, RT 007, RW 008, Kelurahan Krapyak, Kecamatan Semarang Barat, Kota Semarang",
+                tempat_lahir: "Semarang",
+                tgl_lahir: "29/02/2000",
+                pekerjaan: "Belum/tidak bekerja",
+            },
+        ],
+    },
 };

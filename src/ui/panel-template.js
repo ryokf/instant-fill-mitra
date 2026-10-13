@@ -13,6 +13,7 @@ PPAT.panelTemplate = (() => {
         btnRedetect: "ppat-btn-redetect",
         selectPt: "ppat-select-pt",
         btnFillPenjual: "ppat-btn-fill-penjual",
+        chkAutoSubmit: "ppat-chk-autosubmit",
         listPersetujuan: "ppat-list-persetujuan",
         listSaksi: "ppat-list-saksi",
     });
@@ -33,8 +34,15 @@ PPAT.panelTemplate = (() => {
                     <a id="${IDS.btnRedetect}" class="ppat-btn-link" title="Deteksi ulang dari web">Cek Ulang</a>
                 </div>
 
+                <div class="ppat-auto-submit-row">
+                    <label class="ppat-auto-submit-label">
+                        <input type="checkbox" id="${IDS.chkAutoSubmit}" checked>
+                        <span>Otomatis klik tombol <b>"Tambah"</b> di web</span>
+                    </label>
+                </div>
+
                 <div class="ppat-form-group">
-                    <label class="ppat-label">Pilih Penjual (PT):</label>
+                    <label class="ppat-label">Pilih Penjual (PT) <span class="ppat-label-hint">(pilih langsung isi & tambah)</span>:</label>
                     <select id="${IDS.selectPt}" class="ppat-select">
                         <option value="">-- Pilih PT --</option>
                     </select>

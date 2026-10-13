@@ -9,6 +9,7 @@ PPAT.config = Object.freeze({
         PERSETUJUAN_FORM_TIMEOUT_MS: 5000,
         SAKSI_FORM_TIMEOUT_MS: 5000,
         FORM_SETTLE_DELAY_MS: 300, // jeda agar form hasil AJAX selesai dirender
+        SUBMIT_DELAY_MS: 250, // jeda setelah input terisi sebelum menekan Tambah
         DETECT_INTERVAL_MS: 2500, // pengecekan berkala daftar penjual di web
     }),
 
@@ -25,6 +26,7 @@ PPAT.config = Object.freeze({
         penjual: Object.freeze({
             tipePihak: "select#tipepihak1",
             form: "#frmInput1BadanHukum",
+            btnTambah: "#btn-tambah",
             tipePemilik: "#frmInput1BadanHukum select#tipepemilikid",
             tipeUsaha: "#frmInput1BadanHukum select#tipeusaha",
             // [selector input, properti pada data penjual]
@@ -40,6 +42,7 @@ PPAT.config = Object.freeze({
 
         persetujuan: Object.freeze({
             form: "#frmPihaksetujuDukcapil",
+            btnTambah: "#btn-tambahPihaksetujuNIK",
             fields: [
                 ["#tNIKpihaksetuju", "nik"],
                 ["#tNAMA_LENGKAPpihaksetuju", "nama"],
@@ -52,6 +55,7 @@ PPAT.config = Object.freeze({
 
         saksi: Object.freeze({
             form: "#frmSaksiDukcapil",
+            btnTambah: "#btn-tambahSaksiNIK",
             tipeBukti: "#frmSaksiDukcapil select#tipebuktisaksi1",
             fields: [
                 ["#tNIKsaksi", "nik"],
