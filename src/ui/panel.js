@@ -27,6 +27,7 @@ PPAT.panel = (() => {
         setupPtSelection(els);
         setupAutoDetection(els);
         setupFillPenjualButton(els);
+        setupAktaUpload(els);
     }
 
     /** Memeriksa apakah opsi otomatis klik "Tambah" sedang aktif di panel. */
@@ -166,6 +167,124 @@ PPAT.panel = (() => {
         // Pengecekan berkala agar saat user klik "Tambah" di web PPAT,
         // panel otomatis mendeteksi PT dan memunculkan personil pihak persetujuan
         setInterval(() => detect(false), TIMING.DETECT_INTERVAL_MS);
+    }
+
+    // -------------------------------------------------------------------------
+    // Upload & Auto-Fill Pihak Pembeli dari Akta PDF via pembeli-backend
+    // -------------------------------------------------------------------------
+
+    function setupAktaUpload(els) {
+        const {
+            dropzoneAkta,
+            inputAkta,
+            statusAkta,
+            cardPembeli,
+            btnFillPembeli,
+            pembeliNama,
+            pembeliNik,
+            pembeliPekerjaan,
+        } = els;
+
+        if (!dropzoneAkta || !inputAkta) return;
+
+        let lastPembeliData = null;
+
+        const setUploadStatus = (text, type = "info") => {
+            statusAkta.classList.remove("hidden");
+            statusAkta.className = "ppat-status " + type;
+            statusAkta.textContent = text;
+        };
+
+        const renderPembeliCard = (data) => {
+            if (!cardPembeli) return;
+            pembeliNama.textContent = data.nama || "-";
+            pembeliNik.textContent = data.nik || "-";
+            pembeliPekerjaan.textContent = data.pekerjaan || "-";
+            cardPembeli.classList.remove("hidden");
+        };
+
+        const handlePdfFile = async (file) => {
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith(".pdf")) {
+                setUploadStatus("Hanya file berkas PDF (.pdf) yang diperbolehkan.", "warn");
+                return;
+            }
+
+            dropzoneAkta.classList.add("loading");
+            setUploadStatus("⏳ Membaca & mengekstrak data pembeli dari PDF...", "info");
+
+            const formData = new FormData();
+            formData.append("file", file, file.name);
+
+            try {
+                const response = await fetch(config.BACKEND_URL, {
+                    method: "POST",
+                    body: formData,
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success && result.data) {
+                    lastPembeliData = result.data;
+                    setUploadStatus(`✔ Berhasil mengekstrak: ${result.data.nama}`, "ok");
+                    renderPembeliCard(result.data);
+
+                    // Langsung otomatis isi ke form di web PPAT
+                    if (PPAT.pembeliFiller) {
+                        await PPAT.pembeliFiller.fill(result.data, { autoSubmit: isAutoSubmit() });
+                    }
+                } else {
+                    const err = result.error || result.message || "Gagal memproses akta PDF.";
+                    setUploadStatus(`⚠ ${err}`, "warn");
+                }
+            } catch (err) {
+                console.error("AutoFill PPAT - Backend upload error:", err);
+                setUploadStatus("⚠ Backend offline (127.0.0.1:3001). Jalankan pembeli-backend.", "warn");
+            } finally {
+                dropzoneAkta.classList.remove("loading");
+                inputAkta.value = "";
+            }
+        };
+
+        // Klik untuk memilih file
+        dropzoneAkta.addEventListener("click", () => {
+            if (!dropzoneAkta.classList.contains("loading")) {
+                inputAkta.click();
+            }
+        });
+
+        inputAkta.addEventListener("change", (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) handlePdfFile(file);
+        });
+
+        // Drag & Drop
+        dropzoneAkta.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropzoneAkta.classList.add("dragover");
+        });
+
+        dropzoneAkta.addEventListener("dragleave", (e) => {
+            e.preventDefault();
+            dropzoneAkta.classList.remove("dragover");
+        });
+
+        dropzoneAkta.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzoneAkta.classList.remove("dragover");
+            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (file) handlePdfFile(file);
+        });
+
+        // Tombol isi ulang pembeli
+        if (btnFillPembeli) {
+            btnFillPembeli.addEventListener("click", () => {
+                if (lastPembeliData && PPAT.pembeliFiller) {
+                    PPAT.pembeliFiller.fill(lastPembeliData, { autoSubmit: isAutoSubmit() });
+                }
+            });
+        }
     }
 
     return { create };

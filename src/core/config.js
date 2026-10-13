@@ -3,11 +3,14 @@
  * Jika struktur HTML situs PPAT berubah, cukup ubah selector di sini.
  */
 PPAT.config = Object.freeze({
+    BACKEND_URL: "http://127.0.0.1:3001/api/extract-pembeli",
+
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
         PENJUAL_FORM_TIMEOUT_MS: 8000,
         PERSETUJUAN_FORM_TIMEOUT_MS: 5000,
         SAKSI_FORM_TIMEOUT_MS: 5000,
+        PEMBELI_FORM_TIMEOUT_MS: 5000,
         FORM_SETTLE_DELAY_MS: 300, // jeda agar form hasil AJAX selesai dirender
         SUBMIT_DELAY_MS: 250, // jeda setelah input terisi sebelum menekan Tambah
         DETECT_INTERVAL_MS: 2500, // pengecekan berkala daftar penjual di web
@@ -17,6 +20,7 @@ PPAT.config = Object.freeze({
         TIPE_PEMILIK: "33", // 33: Badan Usaha Milik Swasta (BUMS)
         TIPE_USAHA: "4", // 4: Perseroan Terbatas (PT)
         TIPE_BUKTI_SAKSI: "1", // 1: KTP
+        TIPE_BUKTI_PEMBELI: "1", // 1: KTP
         TIPE_PIHAK_NON_PERORANGAN: "Non Perorangan",
     }),
 
@@ -66,6 +70,20 @@ PPAT.config = Object.freeze({
                 ["#tJENIS_PEKERJAANsaksi", "pekerjaan"],
             ],
         }),
+
+        pembeli: Object.freeze({
+            form: "#frmtipepihak2Dukcapil",
+            btnTambah: "#btn-tambahtipepihak2NIK",
+            tipeBukti: "#frmtipepihak2Dukcapil select#tipebuktipihak2",
+            fields: [
+                ["#frmtipepihak2Dukcapil #tNIKPemilik", "nik"],
+                ["#frmtipepihak2Dukcapil #tNAMA_LENGKAP", "nama"],
+                ["#frmtipepihak2Dukcapil #tALAMAT", "alamat"],
+                ["#frmtipepihak2Dukcapil #tTEMPAT_LAHIR", "tempat_lahir"],
+                ["#frmtipepihak2Dukcapil #tTANGGAL_LAHIR", "tgl_lahir"],
+                ["#frmtipepihak2Dukcapil #tJENIS_PEKERJAAN", "pekerjaan"],
+            ],
+        }),
     }),
 
     MESSAGES: Object.freeze({
@@ -79,6 +97,9 @@ PPAT.config = Object.freeze({
         persetujuanFilled: "Data Pihak Persetujuan berhasil diisi!\nSilakan periksa dan klik 'Tambah'.",
         saksiFormMissing: "Form Saksi tidak ditemukan. Pastikan Anda berada di halaman pembuatan Akta PPAT.",
         saksiFilled: (nama) => `Data Saksi (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
+        pembeliFormMissing: "Form Pihak Pembeli tidak ditemukan. Pastikan Anda berada di bagian Pihak Pembeli (Pihak 2).",
+        pembeliFilled: (nama) => `Data Pembeli (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
         selectPtFirst: "Pilih PT terlebih dahulu!",
+        backendOffline: "Service pembeli-backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan service terlebih dahulu.",
     }),
 });

@@ -8,7 +8,9 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://ppat.atrbpn.go.id/*"
+    "https://ppat.atrbpn.go.id/*",
+    "http://127.0.0.1:3001/*",
+    "http://localhost:3001/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js"
@@ -28,6 +30,7 @@
         "src/fillers/penjual-filler.js",
         "src/fillers/persetujuan-filler.js",
         "src/fillers/saksi-filler.js",
+        "src/fillers/pembeli-filler.js",
         "src/ui/panel-template.js",
         "src/ui/person-list.js",
         "src/ui/panel.js",
