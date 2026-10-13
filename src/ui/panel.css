@@ -1,0 +1,192 @@
+/* Style panel melayang AutoFill PPAT. Semua selector diawali "ppat-" agar tidak bentrok dengan CSS halaman. */
+#ppat-autofill-root {
+    position: fixed;
+    top: 75px;
+    right: 20px;
+    z-index: 9999999;
+    font-family: Arial, sans-serif;
+    color: #333;
+}
+#ppat-panel {
+    width: 310px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.22);
+    border: 1px solid #ddd;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: ppatFadeIn 0.2s ease-out;
+}
+#ppat-panel.hidden {
+    display: none !important;
+}
+#ppat-panel-header {
+    background: #26B99A;
+    color: #ffffff;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+#ppat-panel-header .title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+#ppat-panel-header .actions button {
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0.85;
+}
+#ppat-panel-header .actions button:hover {
+    opacity: 1;
+}
+#ppat-panel-body {
+    padding: 12px 14px;
+    max-height: 520px;
+    overflow-y: auto;
+}
+.ppat-status {
+    font-size: 11px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    background: #f4f4f4;
+    color: #555;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.ppat-status.ok {
+    background: #e6f7f2;
+    color: #137a63;
+}
+.ppat-status.warn {
+    background: #fff4e0;
+    color: #8a5a00;
+}
+.ppat-btn-link {
+    font-size: 10px;
+    color: #26B99A;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-left: 6px;
+    white-space: nowrap;
+}
+.ppat-form-group {
+    margin-bottom: 12px;
+}
+.ppat-label {
+    display: block;
+    font-size: 11px;
+    margin-bottom: 4px;
+    font-weight: bold;
+    color: #444;
+}
+.ppat-label-hint {
+    font-weight: normal;
+    color: #888;
+}
+.ppat-select {
+    width: 100%;
+    padding: 7px;
+    font-size: 12px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    background: #fff;
+}
+.ppat-btn-fill {
+    width: 100%;
+    padding: 7px;
+    background-color: #26B99A;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+.ppat-btn-fill:hover {
+    background-color: #169F85;
+}
+.ppat-divider {
+    border-top: 1px dashed #ccc;
+    margin: 12px 0;
+}
+.ppat-person-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.ppat-person-list li {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.ppat-person-list li:last-child {
+    border-bottom: none;
+}
+.ppat-person-list li:hover {
+    background: #e6f7f2;
+}
+.ppat-person-list li.active {
+    background: #26B99A;
+    color: #fff;
+}
+.ppat-person-list li .nik {
+    display: block;
+    font-size: 10px;
+    color: #777;
+    margin-top: 2px;
+}
+.ppat-person-list li.active .nik {
+    color: #e6f7f2;
+}
+.ppat-person-list li.empty {
+    cursor: default;
+    color: #999;
+    font-style: italic;
+    text-align: center;
+}
+.ppat-person-list li.empty:hover {
+    background: none;
+}
+/* Tombol melayang jika panel diminimalkan/ditutup */
+#ppat-launcher-badge {
+    display: none;
+    background: #26B99A;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.15s, background 0.15s;
+}
+#ppat-launcher-badge:hover {
+    background: #169F85;
+    transform: scale(1.04);
+}
+@keyframes ppatFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
