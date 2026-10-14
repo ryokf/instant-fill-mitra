@@ -32,6 +32,7 @@
         "src/fillers/penjual-filler.js",
         "src/fillers/persetujuan-filler.js",
         "src/fillers/saksi-filler.js",
+        "src/fillers/akta-filler.js",
         "src/fillers/pembeli-filler.js",
         "src/fillers/pbb-bphtb-filler.js",
         "src/ui/panel-template.js",

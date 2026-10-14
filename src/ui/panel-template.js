@@ -24,6 +24,8 @@ PPAT.panelTemplate = (() => {
         pembeliNama: "ppat-pembeli-nama",
         pembeliNik: "ppat-pembeli-nik",
         pembeliPekerjaan: "ppat-pembeli-pekerjaan",
+        aktaNomor: "ppat-akta-nomor",
+        aktaTanggal: "ppat-akta-tanggal",
         dropzoneBphtb: "ppat-dropzone-bphtb",
         inputBphtb: "ppat-input-bphtb",
         statusBphtb: "ppat-status-bphtb",
@@ -71,14 +73,14 @@ PPAT.panelTemplate = (() => {
                 <div class="ppat-divider"></div>
 
                 <div class="ppat-form-group">
-                    <label class="ppat-label">Pihak Pembeli <span class="ppat-label-hint">(upload akta PDF)</span>:</label>
+                    <label class="ppat-label">Akta & Pihak Pembeli <span class="ppat-label-hint">(upload akta PDF)</span>:</label>
                     <div id="${IDS.dropzoneAkta}" class="ppat-dropzone" title="Klik atau seret file PDF Akta ke sini">
                         <input type="file" id="${IDS.inputAkta}" accept=".pdf" style="display:none">
                         <div class="ppat-dropzone-inner">
                             <span class="ppat-dropzone-icon">📄</span>
                             <div class="ppat-dropzone-texts">
                                 <span class="ppat-dropzone-title">Upload Akta (PDF)</span>
-                                <span class="ppat-dropzone-sub">Klik / seret file untuk auto-fill pembeli</span>
+                                <span class="ppat-dropzone-sub">Auto-isi Input Akta & Pembeli</span>
                             </div>
                         </div>
                     </div>
@@ -88,6 +90,7 @@ PPAT.panelTemplate = (() => {
                             <span class="ppat-person-name" id="${IDS.pembeliNama}">-</span>
                             <span class="ppat-person-badge">Pembeli</span>
                         </div>
+                        <div class="ppat-person-meta">No. Akta: <b id="${IDS.aktaNomor}">-</b> | Tgl: <span id="${IDS.aktaTanggal}">-</span></div>
                         <div class="ppat-person-meta">NIK: <b id="${IDS.pembeliNik}">-</b></div>
                         <div class="ppat-person-meta">Pekerjaan: <span id="${IDS.pembeliPekerjaan}">-</span></div>
                         <button id="${IDS.btnFillPembeli}" class="ppat-btn-fill" style="margin-top:8px;">Isi Ulang Form Pembeli</button>

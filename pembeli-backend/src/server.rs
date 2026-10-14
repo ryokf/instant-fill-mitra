@@ -136,13 +136,14 @@ async fn extract_pembeli_handler(
 
     match crop_result {
         Ok(result) => {
-            println!("[API] Berhasil mengekstrak data pembeli: {}", result.buyer_info.nama);
+            println!("[API] Berhasil mengekstrak data akta (No: {}, Tgl: {}) dan pembeli: {}", result.akta_info.nomor_akta, result.akta_info.tanggal_akta, result.buyer_info.nama);
             (
                 StatusCode::OK,
                 Json(json!({
                     "success": true,
-                    "message": "Data pembeli berhasil diekstrak dari akta.",
+                    "message": "Data akta dan pembeli berhasil diekstrak dari akta.",
                     "data": result.buyer_info,
+                    "akta": result.akta_info,
                     "meta": {
                         "page_number": result.page_number,
                         "total_pages": result.total_pages,

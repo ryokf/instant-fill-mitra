@@ -19,6 +19,7 @@ pub struct CropResult {
     pub rotation_applied: u32,
     pub raw_text: String,
     pub buyer_info: parser::BuyerJsonOutput,
+    pub akta_info: parser::AktaInfo,
 }
 
 /// Render halaman PDF ke citra DynamicImage menggunakan Windows.Data.Pdf
@@ -207,11 +208,26 @@ pub async fn process_akta_pdf(
         }
     }
 
+    // Ekstrak Nomor Akta dan Tanggal Akta dari Halaman 1 & Halaman 2
+    let empty_lines = Vec::new();
+    let p1_lines = pages_data.get(0).map(|p| &p.0).unwrap_or(&empty_lines);
+    let p2_lines = pages_data.get(1).map(|p| &p.0).unwrap_or(&empty_lines);
+
+    let nomor_akta = parser::parse_akta_nomor(p1_lines, p2_lines);
+    let tanggal_akta = parser::parse_akta_tanggal(p2_lines);
+
+    let akta_info = parser::AktaInfo {
+        nomor_akta: nomor_akta.clone(),
+        tanggal_akta: tanggal_akta.clone(),
+    };
+
     // KASUS A: Seluruh data pembeli berada pada SATU halaman yang sama
     if let Some(start_line_idx) = start_line_same_page {
         let selected_lines = &lines_end[start_line_idx..=end_line_idx];
         let raw_text = selected_lines.join("\n");
-        let buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
+        let mut buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
+        buyer_info.nomor_akta = nomor_akta;
+        buyer_info.tanggal_akta = tanggal_akta;
 
         return Ok(CropResult {
             success: true,
@@ -220,6 +236,7 @@ pub async fn process_akta_pdf(
             rotation_applied: *rot_applied,
             raw_text,
             buyer_info,
+            akta_info,
         });
     }
 
@@ -276,7 +293,9 @@ pub async fn process_akta_pdf(
             raw_lines.push(line.clone());
         }
         let raw_text = raw_lines.join("\n");
-        let buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
+        let mut buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
+        buyer_info.nomor_akta = nomor_akta;
+        buyer_info.tanggal_akta = tanggal_akta;
 
         return Ok(CropResult {
             success: true,
@@ -285,8 +304,31 @@ pub async fn process_akta_pdf(
             rotation_applied: *rot_applied,
             raw_text,
             buyer_info,
+            akta_info,
         });
     }
 
     Err("Gagal menentukan batas awal data pembeli pada dokumen akta.".into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_process_sample_pdf_akta_info() {
+        let pdf = Path::new("sample.pdf");
+        if !pdf.exists() {
+            return;
+        }
+        let res = process_akta_pdf(pdf, 2.0, None).await.unwrap();
+        println!("--> AKTA INFO NOMOR: {:?}", res.akta_info.nomor_akta);
+        println!("--> AKTA INFO TANGGAL: {:?}", res.akta_info.tanggal_akta);
+        println!("--> BUYER INFO: {:?}", res.buyer_info);
+        assert_eq!(res.akta_info.nomor_akta, "574/2026");
+        assert_eq!(res.akta_info.tanggal_akta, "24/09/2026");
+    }
+}
+
+
+

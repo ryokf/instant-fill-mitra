@@ -184,6 +184,8 @@ PPAT.panel = (() => {
             pembeliNama,
             pembeliNik,
             pembeliPekerjaan,
+            aktaNomor,
+            aktaTanggal,
         } = els;
 
         if (!dropzoneAkta || !inputAkta) return;
@@ -196,11 +198,13 @@ PPAT.panel = (() => {
             statusAkta.textContent = text;
         };
 
-        const renderPembeliCard = (data) => {
+        const renderPembeliCard = (data, akta) => {
             if (!cardPembeli) return;
             pembeliNama.textContent = data.nama || "-";
             pembeliNik.textContent = data.nik || "-";
             pembeliPekerjaan.textContent = data.pekerjaan || "-";
+            if (aktaNomor) aktaNomor.textContent = (akta && akta.nomor_akta) || data.nomor_akta || "-";
+            if (aktaTanggal) aktaTanggal.textContent = (akta && akta.tanggal_akta) || data.tanggal_akta || "-";
             cardPembeli.classList.remove("hidden");
         };
 
@@ -213,7 +217,7 @@ PPAT.panel = (() => {
             }
 
             dropzoneAkta.classList.add("loading");
-            setUploadStatus("⏳ Membaca & mengekstrak data pembeli dari PDF...", "info");
+            setUploadStatus("⏳ Membaca nomor, tanggal akta & data pembeli dari PDF...", "info");
 
             const formData = new FormData();
             formData.append("file", file, file.name);
@@ -228,16 +232,30 @@ PPAT.panel = (() => {
 
                 if (response.ok && result.success && result.data) {
                     lastPembeliData = result.data;
-                    setUploadStatus(`✔ Data ${result.data.nama} terisi ke form. Silakan review & klik Tambah.`, "ok");
-                    renderPembeliCard(result.data);
+                    const aktaData = result.akta || {
+                        nomor_akta: result.data.nomor_akta,
+                        tanggal_akta: result.data.tanggal_akta,
+                    };
 
-                    // Langsung otomatis isi ke form di web PPAT (khusus pembeli tidak auto-submit agar bisa direview)
+                    renderPembeliCard(result.data, aktaData);
+
+                    // 1. Ekstrak & isi Nomor dan Tanggal Akta ke Section A (Input Akta)
+                    // Setelah semua kolom di section Input Akta terisi, klik tombol simpan secara otomatis
+                    let aktaStatusPrefix = "";
+                    if (PPAT.aktaFiller && (aktaData.nomor_akta || aktaData.tanggal_akta)) {
+                        await PPAT.aktaFiller.fill(aktaData, { autoSubmit: true });
+                        aktaStatusPrefix = `Akta No. ${aktaData.nomor_akta || "-"} (${aktaData.tanggal_akta || "-"}) tersimpan. `;
+                    }
+
+                    // 2. Langsung otomatis isi ke form di web PPAT (khusus pembeli tidak auto-submit agar bisa direview)
                     if (PPAT.pembeliFiller) {
                         await PPAT.pembeliFiller.fill(result.data, {
                             autoSubmit: false,
                             scrollIntoView: true,
                         });
                     }
+
+                    setUploadStatus(`✔ ${aktaStatusPrefix}Data pembeli (${result.data.nama}) siap direview.`, "ok");
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";
                     setUploadStatus(`⚠ ${err}`, "warn");

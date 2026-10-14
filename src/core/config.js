@@ -8,6 +8,7 @@ PPAT.config = Object.freeze({
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
+        AKTA_FORM_TIMEOUT_MS: 5000,
         PENJUAL_FORM_TIMEOUT_MS: 8000,
         PERSETUJUAN_FORM_TIMEOUT_MS: 5000,
         SAKSI_FORM_TIMEOUT_MS: 5000,
@@ -30,6 +31,15 @@ PPAT.config = Object.freeze({
 
     SELECTORS: Object.freeze({
         daftarPenjual: "#daftarpihak1placeholder blockquote.message",
+
+        akta: Object.freeze({
+            form: "#frmEditAkta",
+            btnSimpan: "#BtnSimpanAkta",
+            fields: [
+                ["#frmEditAkta #nomor", "nomor_akta"],
+                ["#frmEditAkta #tanggalakta", "tanggal_akta"],
+            ],
+        }),
 
         penjual: Object.freeze({
             tipePihak: "select#tipepihak1",
@@ -120,6 +130,8 @@ PPAT.config = Object.freeze({
     MESSAGES: Object.freeze({
         TOGGLE_PANEL_ACTION: "toggleAutoFillPanel",
 
+        aktaFormMissing: "Form Input Akta (#frmEditAkta) tidak ditemukan di halaman PPAT.",
+        aktaSaved: (nomor) => `Data Akta (No: ${nomor}) berhasil diisi dan disimpan!`,
         penjualFormMissing:
             "Gagal memuat Form Penjual (Badan Hukum). Pastikan Anda berada di halaman pembuatan Akta PPAT.",
         penjualFilled: "Data Penjual (Badan Hukum) berhasil diisi!",
