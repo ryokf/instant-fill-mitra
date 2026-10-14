@@ -9,13 +9,69 @@ PPAT.pbbBphtbFiller = (() => {
     const S_BPHTB = SELECTORS.bphtb;
 
     /**
-     * Memeriksa apakah sertifikat sudah terisi pada halaman web PPAT.
-     * Dropdown nomor sertifikat di PBB (#alashakid) harus memiliki opsi sertifikat (length > 1).
+     * Memeriksa apakah sertifikat sudah terisi pada halaman web PPAT:
+     * Divalidasi melalui "Daftar Sertipkat HAT yang sudah diinput" di sebelah kanan (#daftarhatplaceholder li).
+     */
+    function isSertifikatSaved() {
+        if (PPAT.sertipikatFiller && typeof PPAT.sertipikatFiller.isSertifikatSaved === "function") {
+            return PPAT.sertipikatFiller.isSertifikatSaved();
+        }
+        const placeholder = document.querySelector("#daftarhatplaceholder");
+        if (!placeholder) return false;
+        const items = placeholder.querySelectorAll("li");
+        return Array.from(items).some((li) => {
+            return (
+                li.querySelector(".message_wrapper") ||
+                li.querySelector(".heading") ||
+                (li.textContent && li.textContent.trim().length > 5)
+            );
+        });
+    }
+
+    /**
+     * Menunggu hingga data Sertipikat tersimpan di daftar sebelah kanan (#daftarhatplaceholder li).
+     */
+    function waitForSertifikatSaved(timeoutMs = 60000) {
+        if (PPAT.sertipikatFiller && typeof PPAT.sertipikatFiller.waitForSertifikatSaved === "function") {
+            return PPAT.sertipikatFiller.waitForSertifikatSaved(timeoutMs);
+        }
+        if (isSertifikatSaved()) return Promise.resolve(true);
+
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const placeholder = document.querySelector("#daftarhatplaceholder");
+
+            let observer = null;
+            if (placeholder) {
+                observer = new MutationObserver(() => {
+                    if (isSertifikatSaved()) {
+                        if (observer) observer.disconnect();
+                        resolve(true);
+                    }
+                });
+                observer.observe(placeholder, { childList: true, subtree: true });
+            }
+
+            const interval = setInterval(() => {
+                if (isSertifikatSaved()) {
+                    if (observer) observer.disconnect();
+                    clearInterval(interval);
+                    resolve(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    if (observer) observer.disconnect();
+                    clearInterval(interval);
+                    resolve(false);
+                }
+            }, 200);
+        });
+    }
+
+    /**
+     * Memeriksa apakah dropdown sertifikat (#alashakid) sudah terisi opsi.
      */
     function isSertifikatFilled() {
         const selectCert = document.querySelector(S_PBB.dropdownSertifikat);
         if (!selectCert) return false;
-        // Opsi index 0 adalah placeholder "Pilih nomor hak...", opsi >= 1 adalah sertifikat
         const validOptions = Array.from(selectCert.options).filter((opt) => opt.value && opt.value.trim() !== "");
         return validOptions.length > 0;
     }
@@ -25,8 +81,16 @@ PPAT.pbbBphtbFiller = (() => {
      * di sebelah kanan form PBB (#daftarpbbplaceholder li).
      */
     function isPbbSaved() {
-        const listItems = document.querySelectorAll(S_PBB.daftarItems || "#daftarpbbplaceholder li");
-        return listItems.length > 0;
+        const placeholder = document.querySelector(S_PBB.daftarPlaceholder || "#daftarpbbplaceholder");
+        if (!placeholder) return false;
+        const items = placeholder.querySelectorAll("li");
+        return Array.from(items).some((li) => {
+            return (
+                li.querySelector(".message_wrapper") ||
+                li.querySelector(".heading") ||
+                (li.textContent && li.textContent.trim().length > 5)
+            );
+        });
     }
 
     /**
@@ -66,8 +130,61 @@ PPAT.pbbBphtbFiller = (() => {
     }
 
     /**
+     * Memeriksa apakah data BPHTB sudah tersimpan pada "Daftar BPHTB yang sudah diinput"
+     * di sebelah kanan form BPHTB (#bphtbplaceholder li).
+     */
+    function isBphtbSaved() {
+        const placeholder = document.querySelector(S_BPHTB.daftarPlaceholder || "#bphtbplaceholder");
+        if (!placeholder) return false;
+        const items = placeholder.querySelectorAll("li");
+        return Array.from(items).some((li) => {
+            return (
+                li.querySelector(".message_wrapper") ||
+                li.querySelector(".heading") ||
+                (li.textContent && li.textContent.trim().length > 5)
+            );
+        });
+    }
+
+    /**
+     * Menunggu hingga data BPHTB tersimpan di "Daftar BPHTB yang sudah diinput" (#bphtbplaceholder li).
+     */
+    function waitForBphtbSaved(timeoutMs = 60000) {
+        if (isBphtbSaved()) return Promise.resolve(true);
+
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const placeholder = document.querySelector(S_BPHTB.daftarPlaceholder || "#bphtbplaceholder");
+
+            let observer = null;
+            if (placeholder) {
+                observer = new MutationObserver(() => {
+                    if (isBphtbSaved()) {
+                        if (observer) observer.disconnect();
+                        resolve(true);
+                    }
+                });
+                observer.observe(placeholder, { childList: true, subtree: true });
+            }
+
+            const interval = setInterval(() => {
+                if (isBphtbSaved()) {
+                    if (observer) observer.disconnect();
+                    clearInterval(interval);
+                    resolve(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    if (observer) observer.disconnect();
+                    clearInterval(interval);
+                    resolve(false);
+                }
+            }, 200);
+        });
+    }
+
+    /**
      * Mengisi Form PBB (Pajak Bumi Bangunan - Bagian I).
      * Urutan eksekusi yang wajib dipatuhi:
+     * 0. PRASYARAT: Sertipikat HARUS sudah terdaftar di Daftar Sertipikat HAT di sebelah kanan form.
      * 1. Kolom Nomor Sertipikat (#alashakid) dipilih terlebih dahulu.
      * 2. Tunggu sampai kolom Luas (M2) yang berada tepat dibawah Nomor Sertipikat (#luassertipikat) terisi.
      * 3. Jika sudah terisi, baru lanjutkan mengisi kolom dibawahnya (NOP, Tahun, Luas, NJOP).
@@ -75,6 +192,23 @@ PPAT.pbbBphtbFiller = (() => {
      */
     async function fillPbb(data, options = {}) {
         const autoSubmit = options.autoSubmit ?? false;
+
+        // ---------------------------------------------------------------------
+        // PRASYARAT MUTLAK: Sertipikat harus sudah terdaftar di daftar kanan (#daftarhatplaceholder)
+        // ---------------------------------------------------------------------
+        if (!isSertifikatSaved()) {
+            if (options.waitForPrerequisite) {
+                console.log("AutoFill PPAT: Menunggu Sertipikat terdaftar di Daftar Sertipikat HAT (#daftarhatplaceholder)...");
+                const certOk = await waitForSertifikatSaved(options.prerequisiteTimeout || 45000);
+                if (!certOk) {
+                    alert(MESSAGES.sertifikatBelumTerdaftar || "Sertipikat belum terdaftar pada daftar di sebelah kanan!");
+                    return false;
+                }
+            } else {
+                alert(MESSAGES.sertifikatBelumTerdaftar || "Sertipikat belum terdaftar pada daftar di sebelah kanan!");
+                return false;
+            }
+        }
 
         // ---------------------------------------------------------------------
         // TAHAP 1: Kolom Nomor Sertipikat (#alashakid), dipilih terlebih dahulu
@@ -85,13 +219,20 @@ PPAT.pbbBphtbFiller = (() => {
             return false;
         }
 
-        if (!isSertifikatFilled()) {
-            alert(MESSAGES.sertifikatBelumTerisi);
-            return false;
+        // Cari opsi nomor sertifikat valid (tunggu AJAX refreshPage jika baru saja ditambahkan)
+        let validOption = Array.from(selectCert.options).find((opt) => opt.value && opt.value.trim() !== "");
+        if (!validOption) {
+            const startWaitCert = Date.now();
+            while (Date.now() - startWaitCert < 10000) {
+                await dom.delay(200);
+                const curSelect = document.querySelector(S_PBB.dropdownSertifikat);
+                if (curSelect) {
+                    validOption = Array.from(curSelect.options).find((opt) => opt.value && opt.value.trim() !== "");
+                    if (validOption) break;
+                }
+            }
         }
 
-        // Cari opsi nomor sertifikat pertama yang valid (bukan placeholder kosong)
-        const validOption = Array.from(selectCert.options).find((opt) => opt.value && opt.value.trim() !== "");
         if (!validOption) {
             alert(MESSAGES.sertifikatBelumTerisi);
             return false;
@@ -328,6 +469,23 @@ PPAT.pbbBphtbFiller = (() => {
     async function fillBphtb(data, options = {}) {
         const autoSubmit = options.autoSubmit ?? false;
 
+        // ---------------------------------------------------------------------
+        // PRASYARAT MUTLAK: PBB harus sudah terdaftar di daftar kanan (#daftarpbbplaceholder)
+        // ---------------------------------------------------------------------
+        if (!isPbbSaved()) {
+            if (options.waitForPrerequisite) {
+                console.log("AutoFill PPAT: Menunggu PBB terdaftar di Daftar PBB (#daftarpbbplaceholder)...");
+                const pbbOk = await waitForPbbSaved(options.prerequisiteTimeout || 45000);
+                if (!pbbOk) {
+                    alert(MESSAGES.pbbBelumTerdaftar || "PBB belum terdaftar pada daftar di sebelah kanan form! BPHTB hanya bisa diisi jika PBB sudah terisi.");
+                    return false;
+                }
+            } else {
+                alert(MESSAGES.pbbBelumTerdaftar || "PBB belum terdaftar pada daftar di sebelah kanan form! BPHTB hanya bisa diisi jika PBB sudah terisi.");
+                return false;
+            }
+        }
+
         const form = await dom.waitForElement(S_BPHTB.form, TIMING.BPHTB_FORM_TIMEOUT_MS);
         if (!form) {
             alert(MESSAGES.bphtbFormMissing);
@@ -503,14 +661,20 @@ PPAT.pbbBphtbFiller = (() => {
     async function fillAll(data, options = {}) {
         const autoSubmit = options.autoSubmit ?? false;
 
-        if (isPbbSaved()) {
-            // Jika data PBB sudah ada di daftar sebelah kanan, langsung isi BPHTB!
-            console.log("AutoFill PPAT: PBB sudah terinput di daftar sebelah kanan. Mengisi BPHTB...");
-            return await fillBphtb(data, { autoSubmit, scrollIntoView: true });
+        // 1. Verifikasi prasyarat awal: Sertipikat harus sudah terdaftar di sisi kanan!
+        if (!isSertifikatSaved()) {
+            alert(MESSAGES.sertifikatBelumTerdaftar || "Sertipikat belum terdaftar pada 'Daftar Sertipkat HAT' di sebelah kanan form!");
+            return false;
         }
 
-        // Jalankan pengisian PBB dengan opsi continueToBphtb aktif
-        return await fillPbb(data, { autoSubmit, continueToBphtb: true, scrollIntoView: true });
+        // 2. Jika data PBB sudah ada di daftar sebelah kanan, langsung isi BPHTB!
+        if (isPbbSaved()) {
+            console.log("AutoFill PPAT: PBB sudah terinput di daftar sebelah kanan. Mengisi BPHTB...");
+            return await fillBphtb(data, { autoSubmit, scrollIntoView: true, waitForPrerequisite: false });
+        }
+
+        // 3. Jalankan pengisian PBB dengan opsi continueToBphtb aktif
+        return await fillPbb(data, { autoSubmit, continueToBphtb: true, scrollIntoView: true, waitForPrerequisite: false });
     }
 
     /**
@@ -571,8 +735,12 @@ PPAT.pbbBphtbFiller = (() => {
 
     return {
         isSertifikatFilled,
+        isSertifikatSaved,
+        waitForSertifikatSaved,
         isPbbSaved,
         waitForPbbSaved,
+        isBphtbSaved,
+        waitForBphtbSaved,
         fillPbb,
         fillBphtb,
         fillAll,

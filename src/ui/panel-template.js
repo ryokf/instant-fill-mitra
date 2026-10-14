@@ -16,6 +16,11 @@ PPAT.panelTemplate = (() => {
         chkAutoSubmit: "ppat-chk-autosubmit",
         listPersetujuan: "ppat-list-persetujuan",
         listSaksi: "ppat-list-saksi",
+        dropzoneBatch: "ppat-dropzone-batch",
+        inputBatch: "ppat-input-batch",
+        statusBatch: "ppat-status-batch",
+        batchProgress: "ppat-batch-progress",
+        btnRunSequential: "ppat-btn-run-sequential",
         dropzoneAkta: "ppat-dropzone-akta",
         inputAkta: "ppat-input-akta",
         statusAkta: "ppat-status-akta",
@@ -110,6 +115,34 @@ PPAT.panelTemplate = (() => {
                     </div>
                     <div class="ppat-section-body">
                         <ul id="${IDS.listPersetujuan}" class="ppat-person-list"></ul>
+                    </div>
+                </div>
+
+                <!-- MULTI-UPLOAD: PROSES SEMUA BERKAS SEKALIGUS -->
+                <div class="ppat-section" data-section="batch" style="border: 1.5px dashed #0284c7; background: #f0f9ff;">
+                    <div class="ppat-section-header">
+                        <span class="ppat-section-badge" style="background:#0284c7;">⚡</span>
+                        <div class="ppat-section-heading">
+                            <span class="ppat-section-title" style="color:#0369a1; font-weight:bold;">Multi-Upload (Semua Berkas)</span>
+                            <span class="ppat-section-hint">Proses paralel di backend & isi berurutan</span>
+                        </div>
+                    </div>
+                    <div class="ppat-section-body">
+                        <div id="${IDS.dropzoneBatch}" class="ppat-dropzone" title="Pilih atau seret berkas Akta, Sertipikat, BPHTB, dan/atau PPh ke sini" style="background:#ffffff;">
+                            <input type="file" id="${IDS.inputBatch}" multiple accept=".pdf,.png,.jpg,.jpeg" style="display:none">
+                            <div class="ppat-dropzone-inner">
+                                <span class="ppat-dropzone-icon">🚀</span>
+                                <div class="ppat-dropzone-texts">
+                                    <span class="ppat-dropzone-title">Upload Multi-Berkas Sekaligus</span>
+                                    <span class="ppat-dropzone-sub">Bisa pilih beberapa file (Akta, BPHTB, Sertipikat, PPh)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="${IDS.statusBatch}" class="ppat-status hidden" style="margin-top:6px; margin-bottom:0;"></div>
+                        <div id="${IDS.batchProgress}" class="hidden" style="margin-top:8px; font-size:11px; line-height:1.6; background:#ffffff; border:1px solid #bae6fd; padding:6px 8px; border-radius:4px;"></div>
+                        <button id="${IDS.btnRunSequential}" class="ppat-btn-fill hidden" style="margin-top:8px; background:#0284c7; font-weight:bold;">
+                            ⚡ Mulai Isi Semua Form Berurutan
+                        </button>
                     </div>
                 </div>
 

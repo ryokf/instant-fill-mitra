@@ -814,6 +814,59 @@ PPAT.sertipikatFiller = (() => {
         return true;
     }
 
+    /**
+     * Memeriksa apakah data Sertipikat sudah tersimpan pada "Daftar Sertipkat HAT yang sudah diinput"
+     * di sebelah kanan form (#daftarhatplaceholder li).
+     */
+    function isSertifikatSaved() {
+        const placeholder = document.querySelector(S_SERTIPIKAT.daftarPlaceholder || "#daftarhatplaceholder");
+        if (!placeholder) return false;
+        const items = placeholder.querySelectorAll("li");
+        return Array.from(items).some((li) => {
+            return (
+                li.querySelector(".message_wrapper") ||
+                li.querySelector(".heading") ||
+                (li.textContent && li.textContent.trim().length > 5)
+            );
+        });
+    }
+
+    /**
+     * Menunggu hingga data Sertipikat tersimpan di "Daftar Sertipkat HAT" (#daftarhatplaceholder li).
+     * Menggunakan MutationObserver untuk deteksi instan saat respons AJAX tiba.
+     */
+    function waitForSertifikatSaved(timeoutMs = 60000) {
+        if (isSertifikatSaved()) return Promise.resolve(true);
+
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const placeholder = document.querySelector(S_SERTIPIKAT.daftarPlaceholder || "#daftarhatplaceholder");
+
+            let observer = null;
+            if (placeholder) {
+                observer = new MutationObserver(() => {
+                    if (isSertifikatSaved()) {
+                        if (observer) observer.disconnect();
+                        resolve(true);
+                    }
+                });
+                observer.observe(placeholder, { childList: true, subtree: true });
+            }
+
+            const interval = setInterval(() => {
+                if (isSertifikatSaved()) {
+                    if (observer) observer.disconnect();
+                    clearInterval(interval);
+                    resolve(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    if (observer) observer.disconnect();
+                    clearInterval(interval);
+                    resolve(false);
+                }
+            }, 200);
+        });
+    }
+
     return {
         saveSertipikat,
         getSavedSertipikat,
@@ -834,5 +887,7 @@ PPAT.sertipikatFiller = (() => {
         searchAndProcessBerkas,
         checkAndExecuteOpenedBerkasFlow,
         fillSertipikatAJB,
+        isSertifikatSaved,
+        waitForSertifikatSaved,
     };
 })();

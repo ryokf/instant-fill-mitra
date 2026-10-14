@@ -4,9 +4,9 @@
  */
 PPAT.config = Object.freeze({
     BACKEND_URL: "http://127.0.0.1:3001/api/extract-pembeli",
-    BPHTB_BACKEND_URL: "http://127.0.0.1:3002/api/extract-bphtb",
-    SERTIPIKAT_BACKEND_URL: "http://127.0.0.1:3003/api/extract-sertipikat",
-    PPH_BACKEND_URL: "http://127.0.0.1:3004/api/extract-pph",
+    BPHTB_BACKEND_URL: "http://127.0.0.1:3001/api/extract-bphtb",
+    SERTIPIKAT_BACKEND_URL: "http://127.0.0.1:3001/api/extract-sertipikat",
+    PPH_BACKEND_URL: "http://127.0.0.1:3001/api/extract-pph",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -129,6 +129,8 @@ PPAT.config = Object.freeze({
             inputNomorBukti: "#nomorbphtb",
             inputFile: "#txtUploadFileBPHTB",
             btnTambah: "#btn-tambahbphtb",
+            daftarPlaceholder: "#bphtbplaceholder",
+            daftarItems: "#bphtbplaceholder li",
         }),
 
         berkas: Object.freeze({
@@ -192,6 +194,8 @@ PPAT.config = Object.freeze({
         sertipikatFormMissing: "Form Sertipikat (#frmHAT) tidak ditemukan di halaman PPAT.",
         sertipikatFilled: "Data Sertipikat Elektronik berhasil diisi!",
         sertifikatBelumTerisi: "Sertifikat belum terisi di web PPAT. PBB dan BPHTB hanya bisa diisi jika sertifikat sudah terisi.",
+        sertifikatBelumTerdaftar: "Sertipikat belum terdaftar pada 'Daftar Sertipkat HAT' di sebelah kanan form. PBB hanya bisa diisi jika Sertipikat sudah terisi!",
+        pbbBelumTerdaftar: "PBB belum terdaftar pada 'Daftar PBB' di sebelah kanan form. BPHTB hanya bisa diisi jika PBB sudah terisi!",
         pbbFormMissing: "Form PBB tidak ditemukan di halaman PPAT.",
         pbbFilled: "Data PBB berhasil diisi!",
         bphtbFormMissing: "Form BPHTB tidak ditemukan di halaman PPAT.",
@@ -199,9 +203,9 @@ PPAT.config = Object.freeze({
         pphFormMissing: "Form PPh tidak ditemukan di halaman PPAT.",
         pphFilled: "Data PPh berhasil diisi!",
         selectPtFirst: "Pilih PT terlebih dahulu!",
-        backendOffline: "Service pembeli-backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan service terlebih dahulu.",
-        backendBphtbOffline: "Service pbb-bphtb-backend belum aktif di http://127.0.0.1:3002.\nSilakan jalankan start-pbb-backend.bat terlebih dahulu.",
-        backendSertipikatOffline: "Service sertipikat-backend belum aktif di http://127.0.0.1:3003.\nSilakan jalankan start-sertipikat-backend.bat terlebih dahulu.",
-        backendPphOffline: "Service pph-backend belum aktif di http://127.0.0.1:3004.\nSilakan jalankan start-pph-backend.bat terlebih dahulu.",
+        backendOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
+        backendBphtbOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
+        backendSertipikatOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
+        backendPphOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
     }),
 });

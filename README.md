@@ -1,65 +1,53 @@
 # AutoFill PPAT Mitra Kerja
 
 Ekstensi browser (Manifest V3) yang menampilkan panel melayang di `ppat.atrbpn.go.id`
-untuk mengisi otomatis form Penjual (Badan Hukum), Pihak Pembeli (via OCR Akta PDF), PBB & BPHTB (via OCR Dokumen BPHTB), Pihak Persetujuan, dan Pihak Saksi.
+untuk mengisi otomatis form Penjual (Badan Hukum), Pihak Pembeli (via OCR Akta PDF), Pengecekan Sertipikat, PBB & BPHTB (via OCR Dokumen BPHTB), PPh (via OCR Surat Keterangan), Pihak Persetujuan, dan Pihak Saksi.
 
-## Alur singkat
+## Alur Singkat
 
 ```
-Klik ikon toolbar ──► service-worker.js ──(pesan "toggleAutoFillPanel")──► ui/panel.js
-
-Halaman PPAT dimuat ─► content/main.js ─► ui/panel.js  (membuat panel)
-                                            │
-        ┌───────────────────────────────────┼────────────────────────────┐
-        ▼                                   ▼                            ▼
- services/page-reader.js            ui/person-list.js           fillers/*-filler.js
- (baca "Daftar Penjual" di web)     (daftar nama yang diklik)   (isi form di halaman)
-        │                                   │                            │
-        ▼                                   ▼                            ▼
- services/pt-matcher.js             Upload PDF Akta             dom/dom-helpers.js
- (cocokkan database PT)             └─► pembeli-backend (OCR)   (isi input & Select2)
-                                        └─► pembeli-filler.js
-                                    Upload Dokumen BPHTB
-                                    └─► pbb-bphtb-backend (OCR)
-                                        └─► pbb-bphtb-filler.js
+[ Web Browser (Chrome/Edge) ]                      [ Localhost (Port 3001) ]
+   ppat.atrbpn.go.id                                  instant-fill-backend (Rust)
+┌───────────────────────────────┐                  ┌─────────────────────────────────┐
+│ Manifest V3 Content Script    │  HTTP / Multipart│ - POST /api/extract-pembeli     │
+│ - Floating Panel UI           │ ────────────────►│ - POST /api/extract-bphtb       │
+│ - DOM Helpers & Page Context  │ ◄────────────────│ - POST /api/extract-sertipikat   │
+│ - Form Fillers                │   JSON Response  │ - POST /api/extract-pph         │
+└───────────────────────────────┘                  └─────────────────────────────────┘
+                │
+                ▼
+  [ Pengisian Form ATR/BPN Berurutan ]
+  1. Sertipikat Elektronik (NIB & Kode Blangko)
+  2. Akta & Pihak Pembeli (AJB)
+  3. PBB (tunggu ZNT & simpan) -> Lanjut BPHTB (No. Bukti)
+  4. PPh (Suket & NPWP -> Validasi & Upload)
 ```
 
-1. `main.js` memanggil `PPAT.panel.create()` saat DOM siap.
-2. `panel.js` memasang panel, mengisi dropdown PT, lalu menjalankan deteksi berkala:
-   `page-reader` membaca nama penjual di web → `pt-matcher` mencocokkannya dengan database → panel memilih PT otomatis.
-3. **Pihak Pembeli (Upload Akta)**: Seret / pilih file PDF Akta pada dropzone panel → dikirim ke service backend lokal (`http://127.0.0.1:3001/api/extract-pembeli`) → diekstrak dengan Windows Native OCR → hasil JSON otomatis mengisi Form Pihak Pembeli (`#frmtipepihak2Dukcapil`).
-4. **PBB & BPHTB (Upload Dokumen BPHTB)**:
-   - Pastikan Sertifikat sudah terisi di web PPAT terlebih dahulu.
-   - Seret / pilih file PDF atau foto dokumen BPHTB pada panel → dikirim ke service backend (`http://127.0.0.1:3002/api/extract-bphtb`).
-   - **Section PBB**: Dropdown Nomor Sertifikat (`#alashakid`) memilih opsi pertama → otomatis menunggu kolom `Luas (M2)` pertama (`#luassertipikat`) dan kolom `ZNT per M2 (Rp)` (`#nilaiznt`) terisi → mengisi lengkap NOP (18 digit), Tahun (tahun sekarang), Luas Tanah, dan NJOP per M2 tanah → submit form PBB.
-   - **Section BPHTB**: Dropdown (`#obyekpajakid`) memilih opsi pertama → tanpa menunggu data apapun terisi, langsung mengisi `Nomor Bukti Pembayaran` (`#nomorbphtb`) yang diambil dari ujung kanan atas dokumen BPHTB → submit form BPHTB.
-5. Klik nama pada daftar → `persetujuan-filler` / `saksi-filler` mengisi form lewat `dom-helpers`.
-6. Tombol "Isi Form Penjual" → `penjual-filler`.
-7. Opsi "Otomatis klik tombol Tambah" akan langsung menekan tombol submit form setelah data selesai terisi.
+1. **Backend Terpadu (Port 3001)**: Keempat layanan backend (Pembeli, BPHTB, Sertipikat, PPh) disatukan dalam satu binary Rust berkecepatan tinggi berbasis Tokio dan Windows Native WinRT OCR (`Windows.Media.Ocr`).
+2. **Ekstraksi Paralel (Client-Driven Parallel)**:
+   - Pengguna dapat memilih/men-drag beberapa berkas sekaligus pada panel **Multi-Upload**.
+   - Ekstensi mengirimkan seluruh berkas secara bersamaan (`Promise.all`) ke port 3001. Backend memproses seluruh dokumen di thread pool secara paralel.
+3. **Pengisian Form Sekuensial (Anti Race Condition)**:
+   - Setelah ekstraksi paralel selesai, data diisikan ke form web PPAT ATR/BPN secara berurutan dan disiplin mengikuti status AJAX halaman (Sertipikat $\rightarrow$ Akta/Pembeli $\rightarrow$ PBB $\rightarrow$ BPHTB $\rightarrow$ PPh).
+4. **Fleksibilitas Upload Individual**:
+   - Jika pengguna hanya memiliki satu berkas (misal hanya Akta saja atau hanya berkas BPHTB), dropzone masing-masing bagian tetap dapat digunakan seperti biasa.
 
 ## Menjalankan Service Backend
 
-Sebelum mengunggah berkas di ekstensi, jalankan service backend:
-- **Jalankan Semua Service Sekaligus**: Double-click `start-all-backends.bat` di root proyek.
-- **Service Pembeli Backend Saja (Port 3001)**: Double-click `start-backend.bat`.
-- **Service PBB & BPHTB Backend Saja (Port 3002)**: Double-click `start-pbb-backend.bat`.
+Cukup jalankan satu file:
+- Double-click **`start-backend.bat`** (atau `start-all-backends.bat`) di root proyek.
+- Backend terpadu akan langsung aktif di `http://127.0.0.1:3001` dan melayani keempat endpoint secara bersamaan.
 
-## Struktur folder
+## Struktur Folder
 
 | Path | Tanggung jawab |
 |------|----------------|
-| `manifest.json` | Deklarasi ekstensi & **urutan** file content script |
-| `src/core/namespace.js` | Membuat namespace global `PPAT` (harus dimuat pertama) |
-| `src/core/config.js` | Selector halaman PPAT, timing, default, teks pesan, URL backend |
-| `src/data/` | Data PT, Pihak Persetujuan, dan Saksi |
-| `src/dom/dom-helpers.js` | Helper DOM generik (tunggu elemen, isi input, Select2) |
-| `src/services/` | Logika non-UI: membaca halaman & mencocokkan PT |
-| `src/fillers/` | File filler per form (penjual, persetujuan, saksi, pembeli, pbb-bphtb) |
-| `src/ui/` | Template HTML, CSS, daftar orang, dropzone upload, controller panel |
-| `src/content/main.js` | Entry point content script (dimuat terakhir) |
-| `src/background/service-worker.js` | Toggle panel dari ikon toolbar |
-| `pembeli-backend/` | Rust service (Windows WinRT OCR & PDF) penyedia API ekstraksi pembeli (Port 3001) |
-| `pbb-bphtb-backend/` | Rust service (Windows WinRT OCR & PDF) penyedia API ekstraksi PBB & BPHTB (Port 3002) |
-| `start-backend.bat` | Script 1-klik untuk menjalankan pembeli-backend |
-| `start-pbb-backend.bat` | Script 1-klik untuk menjalankan pbb-bphtb-backend |
-| `start-all-backends.bat` | Script 1-klik untuk menjalankan kedua backend sekaligus |
+| `backend/` | **Single unified Rust project** penyedia API ekstraksi Pembeli, BPHTB, Sertipikat, dan PPh (Port 3001) |
+| `start-backend.bat` | Script 1-klik untuk menjalankan backend terpadu |
+| `start-all-backends.bat` | Script alias yang memanggil `start-backend.bat` |
+| `manifest.json` | Deklarasi ekstensi Chrome Manifest V3 |
+| `src/core/config.js` | Konfigurasi terpusat (URL backend port 3001, selector DOM, timing, pesan) |
+| `src/dom/dom-helpers.js` | Helper DOM & injeksi skrip Main World untuk sinkronisasi jQuery & Select2 |
+| `src/fillers/` | Implementasi pengisian form per modul (penjual, pembeli, sertipikat, pbb-bphtb, pph) |
+| `src/ui/` | Template panel melayang, style CSS, dan controller multi-upload |
+| `src/content/main.js` | Entry point content script |

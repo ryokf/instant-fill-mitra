@@ -27,6 +27,7 @@ PPAT.panel = (() => {
         setupPtSelection(els);
         setupAutoDetection(els);
         setupFillPenjualButton(els);
+        setupBatchUpload(els);
         setupAktaUpload(els);
         setupSertipikatUpload(els);
         setupBphtbUpload(els);
@@ -170,6 +171,367 @@ PPAT.panel = (() => {
         // Pengecekan berkala agar saat user klik "Tambah" di web PPAT,
         // panel otomatis mendeteksi PT dan memunculkan personil pihak persetujuan
         setInterval(() => detect(false), TIMING.DETECT_INTERVAL_MS);
+    }
+
+    // -------------------------------------------------------------------------
+    // Multi-Upload (Proses Semua Berkas Paralel di Backend, Isi Berurutan di Web)
+    // -------------------------------------------------------------------------
+
+    function setupBatchUpload(els) {
+        const {
+            dropzoneBatch,
+            inputBatch,
+            statusBatch,
+            batchProgress,
+            btnRunSequential,
+            cardPembeli,
+            pembeliNama,
+            pembeliNik,
+            pembeliPekerjaan,
+            aktaNomor,
+            aktaTanggal,
+            cardSertipikat,
+            sertipikatBerkas,
+            sertipikatNib,
+            sertipikatKode,
+            cardBphtb,
+            bphtbNop,
+            bphtbLuas,
+            bphtbNjop,
+            bphtbNoBukti,
+            cardPph,
+            pphSuket,
+            pphNpwp,
+            pphNama,
+            pphTanggal,
+        } = els;
+
+        if (!dropzoneBatch || !inputBatch) return;
+
+        let lastBatchResults = null;
+
+        const setBatchStatus = (text, type = "info") => {
+            if (!statusBatch) return;
+            statusBatch.classList.remove("hidden");
+            statusBatch.className = "ppat-status " + type;
+            statusBatch.textContent = text;
+        };
+
+        const renderProgressBadges = (assigned, state) => {
+            if (!batchProgress) return;
+            const labels = {
+                pembeli: "📄 Akta Pembeli",
+                sertipikat: "📜 Sertipikat",
+                bphtb: "📋 PBB & BPHTB",
+                pph: "💰 Bukti PPh",
+            };
+
+            let html = "<div style='font-weight:600; margin-bottom:4px;'>Status Ekstraksi Backend (Port 3001):</div>";
+            for (const key of ["sertipikat", "pembeli", "bphtb", "pph"]) {
+                if (!assigned[key]) continue;
+                const file = assigned[key];
+                const s = state[key];
+                let statusBadge = "<span style='color:#0284c7;'>⏳ Sedang diproses...</span>";
+                if (s && s.ok) {
+                    statusBadge = "<span style='color:#16a34a; font-weight:600;'>✔ Berhasil</span>";
+                } else if (s && !s.ok) {
+                    statusBadge = `<span style='color:#dc2626;'>⚠ ${s.error || "Gagal"}</span>`;
+                }
+                html += `<div style='display:flex; justify-content:space-between; margin-bottom:2px;'>
+                    <span>${labels[key]}: <i>${file.name}</i></span>
+                    ${statusBadge}
+                </div>`;
+            }
+            batchProgress.innerHTML = html;
+        };
+
+        function classifyFiles(fileList) {
+            const assigned = {
+                pembeli: null,
+                sertipikat: null,
+                bphtb: null,
+                pph: null,
+            };
+            const unassigned = [];
+
+            for (const f of fileList) {
+                const name = f.name.toLowerCase();
+                if ((name.includes("akta") || name.includes("ajb") || name.includes("pembeli")) && !assigned.pembeli) {
+                    assigned.pembeli = f;
+                } else if ((name.includes("sertipikat") || name.includes("sertifikat") || name.includes("cek") || name.includes("berkas") || name.includes("nib")) && !assigned.sertipikat) {
+                    assigned.sertipikat = f;
+                } else if ((name.includes("bphtb") || name.includes("sspd") || name.includes("pbb")) && !assigned.bphtb) {
+                    assigned.bphtb = f;
+                } else if ((name.includes("pph") || name.includes("suket") || name.includes("pajak")) && !assigned.pph) {
+                    assigned.pph = f;
+                } else {
+                    unassigned.push(f);
+                }
+            }
+
+            const slots = ["pembeli", "sertipikat", "bphtb", "pph"];
+            for (const slot of slots) {
+                if (!assigned[slot] && unassigned.length > 0) {
+                    assigned[slot] = unassigned.shift();
+                }
+            }
+
+            return assigned;
+        }
+
+        const handleBatchFiles = async (fileList) => {
+            if (!fileList || fileList.length === 0) return;
+
+            const assigned = classifyFiles(Array.from(fileList));
+            const activeKeys = Object.keys(assigned).filter((k) => assigned[k]);
+
+            if (activeKeys.length === 0) {
+                setBatchStatus("Pilih berkas PDF atau gambar yang valid.", "warn");
+                return;
+            }
+
+            dropzoneBatch.classList.add("loading");
+            setBatchStatus(`⏳ Mengirim ${activeKeys.length} berkas ke backend (port 3001) secara bersamaan (paralel)...`, "info");
+            batchProgress.classList.remove("hidden");
+            if (btnRunSequential) btnRunSequential.classList.add("hidden");
+
+            const progressState = {};
+            renderProgressBadges(assigned, progressState);
+
+            // Eksekusi PARALEL (Client-Driven Parallel menggunakan Promise.all)
+            const tasks = activeKeys.map(async (key) => {
+                const file = assigned[key];
+                const formData = new FormData();
+                formData.append("file", file, file.name);
+
+                let url = config.BACKEND_URL;
+                if (key === "sertipikat") url = config.SERTIPIKAT_BACKEND_URL;
+                else if (key === "bphtb") url = config.BPHTB_BACKEND_URL;
+                else if (key === "pph") url = config.PPH_BACKEND_URL;
+
+                try {
+                    const resp = await fetch(url, { method: "POST", body: formData });
+                    const json = await resp.json();
+                    if (resp.ok && json.success) {
+                        progressState[key] = { ok: true, data: json.data, akta: json.akta };
+                    } else {
+                        progressState[key] = { ok: false, error: json.error || json.message || "Gagal diproses" };
+                    }
+                } catch (err) {
+                    progressState[key] = { ok: false, error: "Backend offline" };
+                }
+
+                renderProgressBadges(assigned, progressState);
+            });
+
+            await Promise.all(tasks);
+            dropzoneBatch.classList.remove("loading");
+            inputBatch.value = "";
+
+            lastBatchResults = {
+                pembeli: progressState.pembeli?.data,
+                akta: progressState.pembeli?.akta,
+                sertipikat: progressState.sertipikat?.data,
+                bphtb: progressState.bphtb?.data,
+                pph: progressState.pph?.data,
+            };
+
+            // Perbarui tampilan kartu-kartu di panel
+            if (lastBatchResults.pembeli && cardPembeli) {
+                pembeliNama.textContent = lastBatchResults.pembeli.nama || "-";
+                pembeliNik.textContent = lastBatchResults.pembeli.nik || "-";
+                pembeliPekerjaan.textContent = lastBatchResults.pembeli.pekerjaan || "-";
+                if (aktaNomor) aktaNomor.textContent = (lastBatchResults.akta && lastBatchResults.akta.nomor_akta) || lastBatchResults.pembeli.nomor_akta || "-";
+                if (aktaTanggal) aktaTanggal.textContent = (lastBatchResults.akta && lastBatchResults.akta.tanggal_akta) || lastBatchResults.pembeli.tanggal_akta || "-";
+                cardPembeli.classList.remove("hidden");
+            }
+
+            if (lastBatchResults.sertipikat && cardSertipikat) {
+                sertipikatBerkas.textContent = "Berkas: " + (lastBatchResults.sertipikat.nomor_berkas || "-") + "/" + (lastBatchResults.sertipikat.tahun_berkas || "2026");
+                sertipikatNib.textContent = lastBatchResults.sertipikat.nib_elektronik || lastBatchResults.sertipikat.nib || "-";
+                sertipikatKode.textContent = lastBatchResults.sertipikat.nomor_seri_blangko || "-";
+                cardSertipikat.classList.remove("hidden");
+            }
+
+            if (lastBatchResults.bphtb && cardBphtb) {
+                bphtbNop.textContent = lastBatchResults.bphtb.nop || "-";
+                bphtbLuas.textContent = lastBatchResults.bphtb.luas_tanah || "-";
+                bphtbNjop.textContent = lastBatchResults.bphtb.njop_m2 ? lastBatchResults.bphtb.njop_m2.toLocaleString("id-ID") : "-";
+                bphtbNoBukti.textContent = lastBatchResults.bphtb.nomor_bukti_pembayaran || "-";
+                cardBphtb.classList.remove("hidden");
+            }
+
+            if (lastBatchResults.pph && cardPph) {
+                pphSuket.textContent = lastBatchResults.pph.nomor_suket || "Dokumen PPh";
+                pphNpwp.textContent = lastBatchResults.pph.npwp_formatted || lastBatchResults.pph.npwp || "-";
+                pphNama.textContent = lastBatchResults.pph.nama_wp || "-";
+                pphTanggal.textContent = lastBatchResults.pph.tanggal_suket || "-";
+                cardPph.classList.remove("hidden");
+            }
+
+            const successCount = Object.values(progressState).filter((s) => s && s.ok).length;
+            if (successCount > 0) {
+                setBatchStatus(`✔ Ekstraksi ${successCount} berkas selesai! Memulai pengisian form berurutan...`, "ok");
+                if (btnRunSequential) btnRunSequential.classList.remove("hidden");
+                // Jalankan pengisian berurutan
+                await executeSequentialFilling(lastBatchResults);
+            } else {
+                setBatchStatus("⚠ Semua berkas gagal diekstrak. Pastikan backend di http://127.0.0.1:3001 aktif.", "warn");
+            }
+        };
+
+        const executeSequentialFilling = async (results) => {
+            if (!results) return;
+
+            setBatchStatus("⚡ Menjalankan alur pengisian form ATR/BPN secara berurutan...", "info");
+
+            // =========================================================================
+            // TAHAP 1: Sertipikat (Prasyarat mutlak untuk PBB & BPHTB)
+            // =========================================================================
+            if (results.sertipikat) {
+                const certAlreadySaved = PPAT.sertipikatFiller && PPAT.sertipikatFiller.isSertifikatSaved();
+                if (!certAlreadySaved) {
+                    setBatchStatus("⏳ [1/4] Mengisi Form Sertipikat Elektronik (NIB & Kode)...", "info");
+                    if (PPAT.sertipikatFiller && typeof PPAT.sertipikatFiller.fillSertipikatAJB === "function") {
+                        await PPAT.sertipikatFiller.fillSertipikatAJB(results.sertipikat, { autoSubmit: isAutoSubmit() });
+                    }
+
+                    setBatchStatus("⏳ Menunggu Sertipikat tersimpan di 'Daftar Sertipkat HAT' (sisi kanan)...", "info");
+                    const certSaved = await PPAT.sertipikatFiller.waitForSertifikatSaved(45000);
+                    if (!certSaved) {
+                        setBatchStatus("❌ Sertipikat belum terdaftar di sisi kanan. Pengisian selanjutnya dihentikan.", "warn");
+                        alert("Sertipikat belum terkonfirmasi di 'Daftar Sertipkat HAT' di sebelah kanan form. Pengisian PBB & BPHTB dibatalkan demi keamanan.");
+                        return;
+                    }
+                    setBatchStatus("✔ Sertipikat terkonfirmasi di Daftar Sertipikat HAT!", "ok");
+                } else {
+                    setBatchStatus("✔ Sertipikat sudah terdaftar pada daftar di sisi kanan.", "ok");
+                }
+                await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 300);
+            }
+
+            // =========================================================================
+            // TAHAP 2: Akta & Pembeli
+            // =========================================================================
+            if (results.akta && (results.akta.nomor_akta || results.akta.tanggal_akta)) {
+                setBatchStatus("⏳ [2/4] Menyimpan Nomor & Tanggal Akta...", "info");
+                if (PPAT.aktaFiller) {
+                    await PPAT.aktaFiller.fill(results.akta, { autoSubmit: true });
+                }
+                await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 250);
+            }
+
+            if (results.pembeli) {
+                setBatchStatus("⏳ [2/4] Mengisi Data Pihak Pembeli...", "info");
+                if (PPAT.pembeliFiller) {
+                    await PPAT.pembeliFiller.fill(results.pembeli, { autoSubmit: isAutoSubmit(), showAlert: false });
+                }
+                await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 300);
+            }
+
+            // =========================================================================
+            // TAHAP 3: PBB & BPHTB
+            // Aturan Keras:
+            // 1. Sebelum mengisi PBB: Sertipikat HARUS sudah ada di daftar kanan.
+            // 2. Sebelum mengisi BPHTB: PBB HARUS sudah ada di daftar kanan.
+            // =========================================================================
+            if (results.bphtb) {
+                // 1. Cek prasyarat PBB: Sertipikat wajib terisi di daftar kanan!
+                const certOk = PPAT.pbbBphtbFiller.isSertifikatSaved();
+                if (!certOk) {
+                    setBatchStatus("❌ Gagal: PBB tidak dapat diisi karena Sertipikat belum terdaftar di sisi kanan!", "warn");
+                    alert("Sebelum mengisi PBB, Sertipikat harus sudah terdaftar pada 'Daftar Sertipkat HAT' di sebelah kanan form!");
+                    return;
+                }
+
+                // 2. Cek apakah PBB sudah terisi di daftar kanan
+                const pbbAlreadySaved = PPAT.pbbBphtbFiller.isPbbSaved();
+                if (!pbbAlreadySaved) {
+                    setBatchStatus("⏳ [3/4] Mengisi Form PBB (kalkulasi ZNT & pilih file)...", "info");
+                    await PPAT.pbbBphtbFiller.fillPbb(results.bphtb, {
+                        autoSubmit: isAutoSubmit(),
+                        continueToBphtb: false,
+                        waitForPrerequisite: false,
+                    });
+
+                    setBatchStatus("⏳ Menunggu PBB tersimpan di 'Daftar PBB' (sisi kanan)...", "info");
+                    const pbbSaved = await PPAT.pbbBphtbFiller.waitForPbbSaved(60000);
+                    if (!pbbSaved) {
+                        setBatchStatus("❌ PBB belum tersimpan di daftar kanan. Pengisian BPHTB ditunda.", "warn");
+                        alert("PBB belum tersimpan pada 'Daftar PBB' di sebelah kanan. Pengisian BPHTB ditunda sampai PBB tersimpan.");
+                        return;
+                    }
+                    setBatchStatus("✔ PBB terkonfirmasi di Daftar PBB!", "ok");
+                    await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 300);
+                } else {
+                    setBatchStatus("✔ PBB sudah terdaftar pada daftar di sisi kanan.", "ok");
+                }
+
+                // 3. Cek prasyarat BPHTB: PBB wajib terisi di daftar kanan!
+                const pbbOk = PPAT.pbbBphtbFiller.isPbbSaved();
+                if (!pbbOk) {
+                    setBatchStatus("❌ Gagal: BPHTB tidak dapat diisi karena PBB belum terdaftar di sisi kanan!", "warn");
+                    alert("Sebelum mengisi BPHTB, PBB harus sudah terdaftar pada 'Daftar PBB' di sebelah kanan form!");
+                    return;
+                }
+
+                // 4. Lanjut isi Form BPHTB
+                setBatchStatus("⏳ Mengisi Form BPHTB (memilih NOP & bukti bayar)...", "info");
+                await PPAT.pbbBphtbFiller.fillBphtb(results.bphtb, {
+                    autoSubmit: isAutoSubmit(),
+                    waitForPrerequisite: false,
+                });
+                await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 300);
+            }
+
+            // =========================================================================
+            // TAHAP 4: PPh
+            // =========================================================================
+            if (results.pph) {
+                setBatchStatus("⏳ [4/4] Mengisi Form PPh (mencari suket & membuka berkas)...", "info");
+                if (PPAT.pphFiller) {
+                    await PPAT.pphFiller.fill(results.pph, { autoSubmit: isAutoSubmit(), showAlert: false });
+                }
+            }
+
+            setBatchStatus("✔ Seluruh form berhasil diisi secara berurutan sesuai verifikasi daftar kanan!", "ok");
+        };
+
+        // Event listener klik dropzone
+        dropzoneBatch.addEventListener("click", () => {
+            if (!dropzoneBatch.classList.contains("loading")) {
+                inputBatch.click();
+            }
+        });
+
+        inputBatch.addEventListener("change", (e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) handleBatchFiles(files);
+        });
+
+        // Drag & Drop
+        dropzoneBatch.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropzoneBatch.classList.add("dragover");
+        });
+
+        dropzoneBatch.addEventListener("dragleave", (e) => {
+            e.preventDefault();
+            dropzoneBatch.classList.remove("dragover");
+        });
+
+        dropzoneBatch.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzoneBatch.classList.remove("dragover");
+            const files = e.dataTransfer && e.dataTransfer.files;
+            if (files && files.length > 0) handleBatchFiles(files);
+        });
+
+        if (btnRunSequential) {
+            btnRunSequential.addEventListener("click", () => {
+                if (lastBatchResults) executeSequentialFilling(lastBatchResults);
+            });
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -659,6 +1021,7 @@ PPAT.panel = (() => {
                         setUploadStatus("ℹ PBB sudah terinput di daftar sebelah kanan. Mengisi Form BPHTB...", "info");
                         const ok = await PPAT.pbbBphtbFiller.fillBphtb(result.data, {
                             autoSubmit: isAutoSubmit(),
+                            waitForPrerequisite: false,
                         });
                         if (ok) {
                             setUploadStatus(
@@ -672,11 +1035,18 @@ PPAT.panel = (() => {
                             }
                         }
                     } else {
+                        // Sebelum mengisi PBB, periksa apakah Sertipikat sudah terdaftar di daftar kanan
+                        if (!PPAT.pbbBphtbFiller.isSertifikatSaved()) {
+                            setUploadStatus("⚠ Data PBB/BPHTB berhasil diekstrak, namun Sertipikat belum terdaftar di daftar sebelah kanan (#daftarhatplaceholder). Silakan isi dan simpan Sertipikat terlebih dahulu.", "warn");
+                            return;
+                        }
+
                         setUploadStatus("⏳ Mengisi Form PBB di web PPAT...", "info");
 
                         const success = await PPAT.pbbBphtbFiller.fillPbb(result.data, {
                             autoSubmit: isAutoSubmit(),
                             continueToBphtb: true,
+                            waitForPrerequisite: false,
                         });
 
                         if (success) {
@@ -699,7 +1069,7 @@ PPAT.panel = (() => {
                 }
             } catch (err) {
                 console.error("AutoFill PPAT - BPHTB Backend upload error:", err);
-                setUploadStatus("⚠ Backend offline (127.0.0.1:3002). Jalankan start-pbb-backend.bat.", "warn");
+                setUploadStatus("⚠ Backend offline (127.0.0.1:3001). Jalankan start-backend.bat.", "warn");
             } finally {
                 dropzoneBphtb.classList.remove("loading");
                 inputBphtb.value = "";
@@ -740,6 +1110,11 @@ PPAT.panel = (() => {
         if (btnFillPbbBphtb) {
             btnFillPbbBphtb.addEventListener("click", async () => {
                 if (!lastBphtbData) return;
+                if (!PPAT.pbbBphtbFiller.isSertifikatSaved()) {
+                    setUploadStatus("⚠ Sertipikat belum terdaftar di 'Daftar Sertipkat HAT' di sebelah kanan form!", "warn");
+                    alert("Sebelum mengisi PBB & BPHTB, Sertipikat harus sudah terdaftar pada daftar di sebelah kanan!");
+                    return;
+                }
                 setUploadStatus("⏳ Mengisi Form PBB & BPHTB...", "info");
                 const ok = await PPAT.pbbBphtbFiller.fillAll(lastBphtbData, { autoSubmit: isAutoSubmit() });
                 if (ok) setUploadStatus("✔ Form PBB & BPHTB berhasil diisi!", "ok");
@@ -749,6 +1124,11 @@ PPAT.panel = (() => {
         if (btnFillPbbOnly) {
             btnFillPbbOnly.addEventListener("click", async () => {
                 if (!lastBphtbData) return;
+                if (!PPAT.pbbBphtbFiller.isSertifikatSaved()) {
+                    setUploadStatus("⚠ Sertipikat belum terdaftar di 'Daftar Sertipkat HAT' di sebelah kanan form!", "warn");
+                    alert("Sebelum mengisi PBB, Sertipikat harus sudah terdaftar pada daftar di sebelah kanan!");
+                    return;
+                }
                 setUploadStatus("⏳ Mengisi Form PBB...", "info");
                 const ok = await PPAT.pbbBphtbFiller.fillPbb(lastBphtbData, { autoSubmit: isAutoSubmit(), showAlert: false });
                 if (ok) {
@@ -768,6 +1148,11 @@ PPAT.panel = (() => {
         if (btnFillBphtbOnly) {
             btnFillBphtbOnly.addEventListener("click", async () => {
                 if (!lastBphtbData) return;
+                if (!PPAT.pbbBphtbFiller.isPbbSaved()) {
+                    setUploadStatus("⚠ PBB belum terdaftar di 'Daftar PBB yang sudah diinput' di sebelah kanan form!", "warn");
+                    alert("Sebelum mengisi BPHTB, PBB harus sudah terdaftar pada daftar di sebelah kanan!");
+                    return;
+                }
                 setUploadStatus("⏳ Mengisi Form BPHTB...", "info");
                 const ok = await PPAT.pbbBphtbFiller.fillBphtb(lastBphtbData, { autoSubmit: isAutoSubmit(), showAlert: false });
                 if (ok) {
