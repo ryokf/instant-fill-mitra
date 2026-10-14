@@ -77,10 +77,18 @@ async fn run_ocr_on_image(img: &RgbaImage, engine: &OcrEngine, _page_idx: usize)
 
 fn is_buyer_conclusion(text: &str) -> bool {
     let lower = text.to_lowercase();
-    lower.contains("pihak kedua/pembeli")
-        || lower.contains("pihak kedua / pembeli")
-        || lower.contains("pihak kedua/ pembeli")
-        || lower.contains("pembeli\"")
+    let normalized = lower
+        .replace('1', "l")
+        .replace('i', "l")
+        .replace('|', "l")
+        .replace('!', "l");
+
+    normalized.contains("pihak kedua/pembell")
+        || normalized.contains("pihak kedua / pembell")
+        || normalized.contains("pihak kedua/ pembell")
+        || normalized.contains("pembell\"")
+        || normalized.contains("pembell”")
+        || (lower.contains("pihak kedua") && (lower.contains("pembe") || lower.contains("/")))
         || (lower.contains("pihak kedua") && (lower.contains("disebut") || lower.contains("singkat")))
 }
 
@@ -93,6 +101,10 @@ fn is_buyer_start(text: &str) -> bool {
         || trimmed.starts_with("II-")
         || trimmed.starts_with("11-")
         || trimmed.starts_with("2-")
+        || trimmed.starts_with("IL-")
+        || trimmed.starts_with("Il-")
+        || trimmed.starts_with("1l-")
+        || trimmed.starts_with("1L-")
         || ((lower.starts_with("tuan ") || lower.starts_with("nona ") || lower.starts_with("nyonya ")) 
             && (lower.contains("warga negara") || lower.contains("lahir di")))
 }
@@ -102,6 +114,8 @@ fn is_seller_conclusion(text: &str) -> bool {
     lower.contains("pihak pertama/penjual")
         || lower.contains("pihak pertama / penjual")
         || lower.contains("pihak pertama/ penjual")
+        || lower.contains("pihak pertama/penjua1")
+        || (lower.contains("pihak pertama") && (lower.contains("penjua") || lower.contains("/")))
         || lower.contains("pihak pertama")
 }
 
@@ -327,6 +341,19 @@ mod tests {
         println!("--> BUYER INFO: {:?}", res.buyer_info);
         assert_eq!(res.akta_info.nomor_akta, "574/2026");
         assert_eq!(res.akta_info.tanggal_akta, "24/09/2026");
+    }
+
+    #[tokio::test]
+    async fn test_debug_new_uploaded_pdf() {
+        let path = Path::new(r"C:\Users\ryokh\.gemini\antigravity\brain\bde4aa9d-d135-4d5b-83ce-47b9bf6746dc\.user_uploaded\media_1791952474248_df2bda62.pdf");
+        if !path.exists() {
+            return;
+        }
+        let res = process_akta_pdf(path, 1.5, None).await.unwrap();
+        assert_eq!(res.buyer_info.nama, "NANDHI ARIFTA TRISNA");
+        assert_eq!(res.buyer_info.nik, "3374082104970001");
+        assert_eq!(res.akta_info.nomor_akta, "540/2026");
+        assert_eq!(res.akta_info.tanggal_akta, "17/09/2026");
     }
 }
 

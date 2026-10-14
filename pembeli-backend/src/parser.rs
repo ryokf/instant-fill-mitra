@@ -142,13 +142,15 @@ pub fn parse_indonesian_day_word(text: &str) -> Option<u32> {
 pub fn parse_akta_nomor(p1_lines: &[String], p2_lines: &[String]) -> String {
     let re_full = Regex::new(r"(?i)nomor\s*[:\s]*([0-9]+)\s*/\s*([0-9]{4})").unwrap();
 
-    // 1. Coba cari di Halaman 1 (tepat di bawah tulisan AKTA JUAL BELI)
+    // 1. Coba cari di Halaman 1 (di bawah judul AKTA JUAL BELI, abaikan kop)
     let mut after_akta = false;
     let mut p1_after_akta_lines = Vec::new();
     for line in p1_lines {
         let low = line.to_lowercase();
-        if low.contains("akta") || low.contains("jual beli") {
+        let is_kop = low.contains("pejabat") || low.contains("daerah kerja") || low.contains("sk.") || low.contains("kepala bpn");
+        if !is_kop && (low.contains("akta jual beli") || low.contains("jual beli") || low.trim() == "akta") {
             after_akta = true;
+            continue;
         }
         if after_akta {
             if let Some(caps) = re_full.captures(line) {
@@ -185,10 +187,19 @@ pub fn parse_akta_nomor(p1_lines: &[String], p2_lines: &[String]) -> String {
         return format!("{}/{}", num, yr);
     }
 
-    // 2. Fallback ke Halaman 2 (di bawah AKTA JUAL BELI biasanya tercantum nomor juga)
+    // 2. Fallback ke Halaman 2 (tepat di bawah judul AKTA JUAL BELI)
+    let mut after_akta_p2 = false;
     for line in p2_lines {
-        if let Some(caps) = re_full.captures(line) {
-            return format!("{}/{}", &caps[1], &caps[2]);
+        let low = line.to_lowercase();
+        let is_kop = low.contains("pejabat") || low.contains("sk.") || low.contains("kepala bpn");
+        if !is_kop && (low.contains("akta jual beli") || low.contains("jual beli")) {
+            after_akta_p2 = true;
+            continue;
+        }
+        if after_akta_p2 {
+            if let Some(caps) = re_full.captures(line) {
+                return format!("{}/{}", &caps[1], &caps[2]);
+            }
         }
     }
 
