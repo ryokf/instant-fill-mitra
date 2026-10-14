@@ -5,6 +5,7 @@
 PPAT.config = Object.freeze({
     BACKEND_URL: "http://127.0.0.1:3001/api/extract-pembeli",
     BPHTB_BACKEND_URL: "http://127.0.0.1:3002/api/extract-bphtb",
+    SERTIPIKAT_BACKEND_URL: "http://127.0.0.1:3003/api/extract-sertipikat",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -13,6 +14,8 @@ PPAT.config = Object.freeze({
         PERSETUJUAN_FORM_TIMEOUT_MS: 5000,
         SAKSI_FORM_TIMEOUT_MS: 5000,
         PEMBELI_FORM_TIMEOUT_MS: 5000,
+        BERKAS_TIMEOUT_MS: 15000,
+        SERTIPIKAT_FORM_TIMEOUT_MS: 8000,
         PBB_FORM_TIMEOUT_MS: 8000,
         BPHTB_FORM_TIMEOUT_MS: 8000,
         ZNT_WAIT_TIMEOUT_MS: 10000,
@@ -125,6 +128,32 @@ PPAT.config = Object.freeze({
             inputFile: "#txtUploadFileBPHTB",
             btnTambah: "#btn-tambahbphtb",
         }),
+
+        berkas: Object.freeze({
+            inputNomor: "#nmrberkas",
+            inputTahun: "#thnberkas",
+            btnCari: "#btncari",
+            form: "#frmFindBerkasSaya",
+            tableBody: "#berkassayaplaceholder",
+            tabMelengkapi: "#melengkapi-tab",
+            tabProses2: "#tabproses2",
+            wizardSteps: "ul.step-anchor li a, ul.wizard_steps li a, a[href*='step-1']",
+            downloadLinks: "a[href*='Download' i], a[href*='download' i], a[href*='Unduh' i], a[href*='unduh' i], a[download], a:has(i.fa-download), .btn-download, a.btn:has(i.fa-cloud-download)",
+            inputNibElektronik: "#nibelektronik",
+            inputKodeSertipikat: "#kodesertipikat",
+        }),
+
+        sertipikat: Object.freeze({
+            container: "#inputSertipikatplaceholder",
+            formDiv: "#inputsertipikatdiv",
+            form: "#frmHAT",
+            toggleMode: "#toggle-two",
+            inputNibElektronik: "#nibelektronik",
+            inputKodeSertipikat: "#kodesertipikat",
+            btnTambah: "#btn-tambahhat",
+            daftarPlaceholder: "#daftarhatplaceholder",
+            daftarItems: "#daftarhatplaceholder li",
+        }),
     }),
 
     MESSAGES: Object.freeze({
@@ -142,6 +171,12 @@ PPAT.config = Object.freeze({
         saksiFilled: (nama) => `Data Saksi (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
         pembeliFormMissing: "Form Pihak Pembeli tidak ditemukan. Pastikan Anda berada di bagian Pihak Pembeli (Pihak 2).",
         pembeliFilled: (nama) => `Data Pembeli (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
+        berkasFormMissing: "Form Pencarian Berkas (#nmrberkas) tidak ditemukan di halaman ini.",
+        berkasNotFound: "Berkas tidak ditemukan pada hasil pencarian web PPAT.",
+        berkasRowFound: "Data berkas ditemukan! Membuka halaman berkas...",
+        sertipikatExtracted: (nib, kode) => `NIB: ${nib} | Kode: ${kode} berhasil diperoleh!`,
+        sertipikatFormMissing: "Form Sertipikat (#frmHAT) tidak ditemukan di halaman PPAT.",
+        sertipikatFilled: "Data Sertipikat Elektronik berhasil diisi!",
         sertifikatBelumTerisi: "Sertifikat belum terisi di web PPAT. PBB dan BPHTB hanya bisa diisi jika sertifikat sudah terisi.",
         pbbFormMissing: "Form PBB tidak ditemukan di halaman PPAT.",
         pbbFilled: "Data PBB berhasil diisi!",
@@ -150,5 +185,6 @@ PPAT.config = Object.freeze({
         selectPtFirst: "Pilih PT terlebih dahulu!",
         backendOffline: "Service pembeli-backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan service terlebih dahulu.",
         backendBphtbOffline: "Service pbb-bphtb-backend belum aktif di http://127.0.0.1:3002.\nSilakan jalankan start-pbb-backend.bat terlebih dahulu.",
+        backendSertipikatOffline: "Service sertipikat-backend belum aktif di http://127.0.0.1:3003.\nSilakan jalankan start-sertipikat-backend.bat terlebih dahulu.",
     }),
 });

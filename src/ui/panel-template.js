@@ -37,6 +37,15 @@ PPAT.panelTemplate = (() => {
         btnFillPbbBphtb: "ppat-btn-fill-pbb-bphtb",
         btnFillPbbOnly: "ppat-btn-fill-pbb-only",
         btnFillBphtbOnly: "ppat-btn-fill-bphtb-only",
+        dropzoneSertipikat: "ppat-dropzone-sertipikat",
+        inputSertipikat: "ppat-input-sertipikat",
+        statusSertipikat: "ppat-status-sertipikat",
+        cardSertipikat: "ppat-card-sertipikat",
+        sertipikatBerkas: "ppat-sertipikat-berkas",
+        sertipikatNib: "ppat-sertipikat-nib",
+        sertipikatKode: "ppat-sertipikat-kode",
+        btnCariBerkas: "ppat-btn-cari-berkas",
+        btnFillSertipikat: "ppat-btn-fill-sertipikat",
     });
 
     const HTML = `
@@ -94,6 +103,35 @@ PPAT.panelTemplate = (() => {
                         <div class="ppat-person-meta">NIK: <b id="${IDS.pembeliNik}">-</b></div>
                         <div class="ppat-person-meta">Pekerjaan: <span id="${IDS.pembeliPekerjaan}">-</span></div>
                         <button id="${IDS.btnFillPembeli}" class="ppat-btn-fill" style="margin-top:8px;">Isi Ulang Form Pembeli</button>
+                    </div>
+                </div>
+
+                <div class="ppat-divider"></div>
+
+                <div class="ppat-form-group">
+                    <label class="ppat-label">Sertipikat & Berkas <span class="ppat-label-hint">(upload surat cek sertipikat)</span>:</label>
+                    <div id="${IDS.dropzoneSertipikat}" class="ppat-dropzone" title="Klik atau seret file PDF Pengecekan Sertipikat ke sini">
+                        <input type="file" id="${IDS.inputSertipikat}" accept=".pdf" style="display:none">
+                        <div class="ppat-dropzone-inner">
+                            <span class="ppat-dropzone-icon">📜</span>
+                            <div class="ppat-dropzone-texts">
+                                <span class="ppat-dropzone-title">Upload Pengecekan Sertipikat</span>
+                                <span class="ppat-dropzone-sub">Auto-cari berkas & isi Sertipikat AJB</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="${IDS.statusSertipikat}" class="ppat-status hidden" style="margin-top:6px; margin-bottom:0;"></div>
+                    <div id="${IDS.cardSertipikat}" class="ppat-person-card hidden">
+                        <div class="ppat-person-card-header">
+                            <span class="ppat-person-name" id="${IDS.sertipikatBerkas}">Berkas: -</span>
+                            <span class="ppat-person-badge" style="background:#337ab7;">Sertipikat</span>
+                        </div>
+                        <div class="ppat-person-meta">NIB Elektronik: <b id="${IDS.sertipikatNib}">-</b></div>
+                        <div class="ppat-person-meta">Kode Sertifikat: <b id="${IDS.sertipikatKode}">-</b></div>
+                        <div style="display:flex; gap:6px; margin-top:8px;">
+                            <button id="${IDS.btnCariBerkas}" class="ppat-btn-fill" style="flex:1; background:#337ab7;" title="Cari di menu Berkas ATR/BPN">Cari di Berkas</button>
+                            <button id="${IDS.btnFillSertipikat}" class="ppat-btn-fill" style="flex:1;" title="Isi form Sertipikat di halaman AJB">Isi Sertipikat</button>
+                        </div>
                     </div>
                 </div>
 

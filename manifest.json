@@ -5,14 +5,17 @@
   "description": "Ekstensi panel melayang untuk mengisi otomatis data Penjual, Pembeli, PBB, dan BPHTB di web PPAT.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
     "https://ppat.atrbpn.go.id/*",
     "http://127.0.0.1:3001/*",
     "http://localhost:3001/*",
     "http://127.0.0.1:3002/*",
-    "http://localhost:3002/*"
+    "http://localhost:3002/*",
+    "http://127.0.0.1:3003/*",
+    "http://localhost:3003/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js"
@@ -34,6 +37,7 @@
         "src/fillers/saksi-filler.js",
         "src/fillers/akta-filler.js",
         "src/fillers/pembeli-filler.js",
+        "src/fillers/sertipikat-filler.js",
         "src/fillers/pbb-bphtb-filler.js",
         "src/ui/panel-template.js",
         "src/ui/person-list.js",
