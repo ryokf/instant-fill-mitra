@@ -359,6 +359,28 @@ PPAT.panel = (() => {
             }
         });
 
+        // Sinkronisasi data sertipikat secara real-time antar-tab (misal dari tab Berkas ke tab AJB)
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+            chrome.storage.onChanged.addListener((changes, area) => {
+                if (area === "local" && changes["ppat_sertipikat_data"]) {
+                    const fresh = changes["ppat_sertipikat_data"].newValue;
+                    if (fresh) {
+                        lastSertipikatData = fresh;
+                        renderSertipikatCard(fresh);
+                    }
+                }
+            });
+        }
+        window.addEventListener("storage", (e) => {
+            if (e.key === "ppat_sertipikat_data" && e.newValue) {
+                try {
+                    const fresh = JSON.parse(e.newValue);
+                    lastSertipikatData = fresh;
+                    renderSertipikatCard(fresh);
+                } catch (err) {}
+            }
+        });
+
         const handleSertipikatFile = async (file) => {
             if (!file) return;
 
@@ -382,51 +404,67 @@ PPAT.panel = (() => {
                 const result = await response.json();
 
                 if (response.ok && result.success && result.data) {
+                    // Reset total data lama dengan data baru yang baru diekstrak dari PDF
                     lastSertipikatData = {
-                        ...result.data,
-                        kode_sertipikat: result.data.nomor_seri_blangko || result.data.kode_sertipikat,
+                        nomor_berkas: result.data.nomor_berkas || "",
+                        tahun_berkas: result.data.tahun_berkas || "2026",
+                        nib: result.data.nib || "",
+                        nib_elektronik: result.data.nib_elektronik || "",
+                        kode_sertipikat: result.data.nomor_seri_blangko || result.data.kode_sertipikat || "",
+                        nomor_seri_blangko: result.data.nomor_seri_blangko || "",
+                        source: "upload_pdf",
+                        saved_at: Date.now(),
                     };
 
                     await sertipikatFiller.saveSertipikat(lastSertipikatData);
                     renderSertipikatCard(lastSertipikatData);
 
-                    // Cek di halaman mana pengguna sedang berada:
-                    if (sertipikatFiller.isOpenedBerkasLoaded()) {
-                        // Di view berkas yang sudah terbuka: langsung unduh dokumen & ambil Step 1
-                        setUploadStatus("⏳ View berkas terdeteksi! Mengunduh dokumen & mengambil Step 1...", "info");
-                        const res = await sertipikatFiller.processOpenedBerkas(
-                            lastSertipikatData.nomor_berkas,
-                            lastSertipikatData.tahun_berkas,
-                            (msg, type) => setUploadStatus(msg, type)
-                        );
-                        if (res) {
-                            lastSertipikatData = res;
-                            renderSertipikatCard(res);
-                        }
-                    } else if (sertipikatFiller.isBerkasPage()) {
-                        // Di halaman Berkas: otomatis jalankan alur cari berkas, download dokumen, klik step 1, ambil NIB & kode
-                        setUploadStatus("⏳ Berada di menu Berkas. Menjalankan pencarian berkas otomatis...", "info");
-                        const res = await sertipikatFiller.searchAndProcessBerkas(lastSertipikatData, (msg, type) => {
-                            setUploadStatus(msg, type);
-                        });
-                        if (res) {
-                            lastSertipikatData = res;
-                            renderSertipikatCard(res);
+                    // Cek halaman saat ini:
+                    if (sertipikatFiller.isBerkasPage()) {
+                        if (sertipikatFiller.isOpenedBerkasMatching(lastSertipikatData.nomor_berkas)) {
+                            // Jika berkas yang dibuka saat ini memang berkas yang sama
+                            setUploadStatus("⏳ Berkas terbuka cocok! Mengunduh dokumen & mengambil Step 1...", "info");
+                            const res = await sertipikatFiller.processOpenedBerkas(
+                                lastSertipikatData.nomor_berkas,
+                                lastSertipikatData.tahun_berkas,
+                                (msg, type) => setUploadStatus(msg, type)
+                            );
+                            if (res) {
+                                lastSertipikatData = res;
+                                renderSertipikatCard(res);
+                            }
+                        } else {
+                            // Berkas lain atau belum dicari: jalankan pencarian otomatis untuk berkas ini
+                            setUploadStatus(`⏳ Berada di menu Berkas. Mencari Berkas No. ${lastSertipikatData.nomor_berkas}...`, "info");
+                            const res = await sertipikatFiller.searchAndProcessBerkas(lastSertipikatData, (msg, type) => {
+                                setUploadStatus(msg, type);
+                            });
+                            if (res) {
+                                lastSertipikatData = res;
+                                renderSertipikatCard(res);
+                            }
                         }
                     } else if (sertipikatFiller.isAjbPage()) {
-                        // Di halaman AJB: langsung isi Section H (Input Sertipikat)
-                        setUploadStatus("⏳ Mengisi Section H (Input Sertipikat) di form AJB...", "info");
-                        const ok = await sertipikatFiller.fillSertipikatAJB(lastSertipikatData, {
-                            autoSubmit: isAutoSubmit(),
-                        });
-                        if (ok) {
-                            setUploadStatus("✔ Form Sertipikat Elektronik berhasil diisi!", "ok");
+                        // Di halaman AJB
+                        if (lastSertipikatData.nib_elektronik && lastSertipikatData.kode_sertipikat) {
+                            setUploadStatus("⏳ Mengisi Section H (Input Sertipikat) di form AJB...", "info");
+                            const ok = await sertipikatFiller.fillSertipikatAJB(lastSertipikatData, {
+                                autoSubmit: isAutoSubmit(),
+                            });
+                            if (ok) {
+                                setUploadStatus("✔ Form Sertipikat Elektronik berhasil diisi!", "ok");
+                            } else {
+                                setUploadStatus("⚠ Form Sertipikat tidak ditemukan atau gagal diisi.", "warn");
+                            }
                         } else {
-                            setUploadStatus("⚠ Form Sertipikat tidak ditemukan atau gagal diisi.", "warn");
+                            setUploadStatus(
+                                `✔ Berkas No. ${lastSertipikatData.nomor_berkas}/${lastSertipikatData.tahun_berkas} diekstrak. Silakan klik 'Cari di Berkas' untuk mengambil Kode Sertipikat.`,
+                                "ok"
+                            );
                         }
                     } else {
                         setUploadStatus(
-                            `✔ Berkas No. ${result.data.nomor_berkas}/${result.data.tahun_berkas} diekstrak. Silakan buka menu Berkas atau halaman AJB.`,
+                            `✔ Berkas No. ${lastSertipikatData.nomor_berkas}/${lastSertipikatData.tahun_berkas} diekstrak. Silakan buka menu Berkas atau halaman AJB.`,
                             "ok"
                         );
                     }
@@ -476,33 +514,40 @@ PPAT.panel = (() => {
         // Tombol aksi: Cari di Berkas
         if (btnCariBerkas) {
             btnCariBerkas.addEventListener("click", async () => {
-                if (!lastSertipikatData || !lastSertipikatData.nomor_berkas) {
+                const freshData = (await sertipikatFiller.getSavedSertipikat()) || lastSertipikatData;
+                if (!freshData || !freshData.nomor_berkas) {
                     setUploadStatus("Upload dokumen pengecekan sertipikat terlebih dahulu.", "warn");
                     return;
                 }
 
-                if (sertipikatFiller.isOpenedBerkasLoaded()) {
-                    setUploadStatus("⏳ Memproses berkas yang terbuka (unduh dokumen & Step 1)...", "info");
-                    const res = await sertipikatFiller.processOpenedBerkas(
-                        lastSertipikatData.nomor_berkas,
-                        lastSertipikatData.tahun_berkas,
-                        (msg, type) => setUploadStatus(msg, type)
-                    );
-                    if (res) {
-                        lastSertipikatData = res;
-                        renderSertipikatCard(res);
-                    }
-                } else if (sertipikatFiller.isBerkasPage()) {
-                    setUploadStatus("⏳ Menjalankan pencarian berkas...", "info");
-                    const res = await sertipikatFiller.searchAndProcessBerkas(lastSertipikatData, (msg, type) => {
-                        setUploadStatus(msg, type);
-                    });
-                    if (res) {
-                        lastSertipikatData = res;
-                        renderSertipikatCard(res);
+                lastSertipikatData = freshData;
+                renderSertipikatCard(freshData);
+
+                if (sertipikatFiller.isBerkasPage()) {
+                    if (sertipikatFiller.isOpenedBerkasMatching(freshData.nomor_berkas)) {
+                        setUploadStatus("⏳ Memproses berkas yang terbuka (unduh dokumen & Step 1)...", "info");
+                        const res = await sertipikatFiller.processOpenedBerkas(
+                            freshData.nomor_berkas,
+                            freshData.tahun_berkas,
+                            (msg, type) => setUploadStatus(msg, type)
+                        );
+                        if (res) {
+                            lastSertipikatData = res;
+                            renderSertipikatCard(res);
+                        }
+                    } else {
+                        setUploadStatus(`⏳ Menjalankan pencarian Berkas No. ${freshData.nomor_berkas}...`, "info");
+                        const res = await sertipikatFiller.searchAndProcessBerkas(freshData, (msg, type) => {
+                            setUploadStatus(msg, type);
+                        });
+                        if (res) {
+                            lastSertipikatData = res;
+                            renderSertipikatCard(res);
+                        }
                     }
                 } else {
-                    // Navigasi ke halaman Berkas
+                    setUploadStatus("⏳ Menyimpan antrean & mengalihkan ke menu Berkas...", "info");
+                    await sertipikatFiller.setPendingFlow(freshData);
                     window.location.href = "https://ppat.atrbpn.go.id/intan/Berkas";
                 }
             });
@@ -511,18 +556,24 @@ PPAT.panel = (() => {
         // Tombol aksi: Isi Sertipikat di halaman AJB
         if (btnFillSertipikat) {
             btnFillSertipikat.addEventListener("click", async () => {
-                if (!lastSertipikatData) {
+                const freshData = (await sertipikatFiller.getSavedSertipikat()) || lastSertipikatData;
+                if (!freshData || (!freshData.nib_elektronik && !freshData.kode_sertipikat && !freshData.nomor_berkas)) {
                     setUploadStatus("Upload dokumen pengecekan sertipikat terlebih dahulu.", "warn");
                     return;
                 }
 
+                lastSertipikatData = freshData;
+                renderSertipikatCard(freshData);
+
                 if (sertipikatFiller.isAjbPage()) {
                     setUploadStatus("⏳ Mengisi Form Sertipikat...", "info");
-                    const ok = await sertipikatFiller.fillSertipikatAJB(lastSertipikatData, {
+                    const ok = await sertipikatFiller.fillSertipikatAJB(freshData, {
                         autoSubmit: isAutoSubmit(),
                     });
                     if (ok) {
                         setUploadStatus("✔ Form Sertipikat berhasil diisi!", "ok");
+                    } else {
+                        setUploadStatus("⚠ Form Sertipikat gagal diisi atau tidak ditemukan.", "warn");
                     }
                 } else {
                     // Navigasi ke halaman AJB

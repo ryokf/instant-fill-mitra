@@ -152,6 +152,62 @@ PPAT.sertipikatFiller = (() => {
         );
     }
 
+    /**
+     * Membaca nomor berkas dari halaman/view berkas yang sedang terbuka.
+     */
+    function getOpenedBerkasNumber() {
+        // 1. Cek hidden input di Step 1 (#DataSertipikat_nomorberkas)
+        const input = document.querySelector("#DataSertipikat_nomorberkas");
+        if (input && input.value) {
+            const m = input.value.match(/([0-9]{3,8})/);
+            if (m) return m[1];
+        }
+
+        // 2. Cek heading h2 di tabproses2 atau smartwizard
+        const headings = document.querySelectorAll("#tabproses2 h2, #smartwizard h2, .hidden-print h2, .page-title h2");
+        for (const h of headings) {
+            const text = h.textContent || "";
+            const m = text.match(/Nomor\s*Berkas\s*:\s*([0-9]{3,8})/i);
+            if (m) return m[1];
+        }
+
+        // 3. Cek link data-content-url di smartwizard
+        const stepLink = document.querySelector("a[data-content-url*='nomorberkas=']");
+        if (stepLink) {
+            const url = stepLink.getAttribute("data-content-url") || "";
+            const m = url.match(/nomorberkas=([0-9]{3,8})/i);
+            if (m) return m[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Memeriksa apakah view berkas yang sedang terbuka sesuai dengan nomor berkas target.
+     */
+    function isOpenedBerkasMatching(targetNomorBerkas) {
+        if (!targetNomorBerkas) return false;
+        if (!isOpenedBerkasLoaded()) return false;
+        const currentNum = getOpenedBerkasNumber();
+        if (!currentNum) return false;
+        return currentNum.toString().trim() === targetNomorBerkas.toString().trim();
+    }
+
+    /**
+     * Beralih ke tab BERKAS (#tabproses1) untuk melakukan pencarian jika tab detail sedang aktif.
+     */
+    function switchToBerkasSearchTab() {
+        const berkasTab = document.querySelector("#berkas-tab, a[href*='#tabproses1']");
+        if (berkasTab) {
+            berkasTab.click();
+        }
+        dom.runInPageContext(() => {
+            if (window.jQuery) {
+                window.jQuery("#berkas-tab, a[href='#tabproses1']").tab("show");
+            }
+        });
+    }
+
     // -------------------------------------------------------------------------
     // Ekstraksi & Download Dokumen yang Ditampilkan di Halaman Berkas
     // -------------------------------------------------------------------------
@@ -306,7 +362,11 @@ PPAT.sertipikatFiller = (() => {
      * Mengklik tombol Step 1 pada wizard (step 1 sampai 5) hingga kolom NIB Elektronik
      * dan Kode Sertifikat muncul, lalu membaca nilainya.
      */
-    async function clickStep1AndReadFields(timeoutMs = 15000) {
+    /**
+     * Mengklik tombol Step 1 pada wizard (step 1 sampai 5) hingga kolom NIB Elektronik
+     * dan Kode Sertifikat muncul, lalu membaca nilainya.
+     */
+    async function clickStep1AndReadFields(expectedNomorBerkas = null, timeoutMs = 15000) {
         console.log("AutoFill PPAT: Mengklik Step 1 untuk memunculkan kolom NIB Elektronik dan Kode Sertifikat...");
 
         // Cari tombol Step 1
@@ -361,6 +421,16 @@ PPAT.sertipikatFiller = (() => {
         // Tunggu input NIB Elektronik & Kode Sertifikat terisi di Step 1 (#sertifikat)
         const startTime = Date.now();
         while (Date.now() - startTime < timeoutMs) {
+            // Jika ada expectedNomorBerkas, pastikan nomor berkas di DOM Step 1 sesuai
+            if (expectedNomorBerkas) {
+                const currentNum = getOpenedBerkasNumber();
+                if (currentNum && currentNum.toString().trim() !== expectedNomorBerkas.toString().trim()) {
+                    // Masih memuat nomor berkas lama, tunggu hingga DOM selesai update
+                    await dom.delay(300);
+                    continue;
+                }
+            }
+
             const inputNib =
                 document.querySelector("#DataSertipikat_inputsertipikat_nibelektronik") ||
                 document.querySelector(S_BERKAS.inputNibElektronik) ||
@@ -433,25 +503,29 @@ PPAT.sertipikatFiller = (() => {
 
         // 2. Klik Step 1 dan baca NIB Elektronik serta Kode Sertifikat
         updateStatus("⏳ Mengklik tombol Step 1 dan membaca kolom NIB & Kode Sertifikat...", "info");
-        const fields = await clickStep1AndReadFields(15000);
+        const fields = await clickStep1AndReadFields(nomorBerkas, 15000);
 
         const nibFinal = fields?.nib_elektronik || "";
         const kodeFinal = fields?.kode_sertipikat || "";
 
+        const existing = await getSavedSertipikat();
+
         const savedPayload = {
+            ...(existing && existing.nomor_berkas === nomorBerkas ? existing : {}),
             nomor_berkas: nomorBerkas || "",
             tahun_berkas: tahunBerkas || "2026",
-            nib_elektronik: nibFinal,
-            kode_sertipikat: kodeFinal,
-            nomor_seri_blangko: kodeFinal,
+            nib_elektronik: nibFinal || existing?.nib_elektronik || "",
+            kode_sertipikat: kodeFinal || existing?.kode_sertipikat || "",
+            nomor_seri_blangko: kodeFinal || existing?.nomor_seri_blangko || "",
             source: "berkas_step1",
+            saved_at: Date.now(),
         };
 
         await saveSertipikat(savedPayload);
         await clearPendingFlow();
 
         updateStatus(
-            `✔ Selesai! Dokumen terunduh, NIB: ${nibFinal || "-"} | Kode: ${kodeFinal || "-"} berhasil disimpan ke ekstensi!`,
+            `✔ Selesai! Berkas ${nomorBerkas} - NIB: ${savedPayload.nib_elektronik || "-"} | Kode: ${kodeFinal || "-"} berhasil disimpan ke ekstensi!`,
             "ok"
         );
 
@@ -463,6 +537,9 @@ PPAT.sertipikatFiller = (() => {
     // -------------------------------------------------------------------------
 
     async function searchBerkas(data) {
+        switchToBerkasSearchTab();
+        await dom.delay(300);
+
         const inputNomor = await dom.waitForElement(S_BERKAS.inputNomor, TIMING.BERKAS_TIMEOUT_MS);
         if (!inputNomor) {
             console.warn(MESSAGES.berkasFormMissing);
@@ -487,61 +564,85 @@ PPAT.sertipikatFiller = (() => {
         const btnCari = document.querySelector(S_BERKAS.btnCari);
         if (btnCari) {
             btnCari.click();
+            dom.runInPageContext(() => {
+                if (window.jQuery) {
+                    window.jQuery("#frmFindBerkasSaya").submit();
+                }
+            });
             return true;
         }
         return false;
     }
 
-    async function waitForAndClickBerkasRow(timeoutMs = 15000) {
+    async function waitForAndClickBerkasRow(targetNomorBerkas, timeoutMs = 25000) {
         const startTime = Date.now();
+        const targetStr = (targetNomorBerkas || "").toString().trim();
 
         while (Date.now() - startTime < timeoutMs) {
             const isBlocking = !!document.querySelector(".blockUI.blockOverlay");
             const rows = document.querySelectorAll(`${S_BERKAS.tableBody} tr`);
 
             if (rows.length > 0 && !isBlocking) {
-                const firstRow = rows[0];
-                const text = firstRow.textContent || "";
-                if (text.toLowerCase().includes("tidak ada data") || text.toLowerCase().includes("noresults")) {
-                    console.warn("AutoFill PPAT: Pencarian berkas tidak menghasilkan data.");
-                    return null;
-                }
-
-                firstRow.scrollIntoView({ behavior: "smooth", block: "center" });
-                await dom.delay(200);
-
-                // Klik baris tabel
-                firstRow.click();
-                const link = firstRow.querySelector("a, button, td[onclick]");
-                if (link && link !== firstRow) link.click();
-
-                dom.runInPageContext(() => {
-                    if (!window.jQuery) return;
-                    const $row = window.jQuery("#berkassayaplaceholder tr").first();
-                    if ($row && $row.length) {
-                        $row.trigger("click");
-                        $row.find("a, td").first().trigger("click");
+                for (const row of rows) {
+                    const text = (row.textContent || "").trim();
+                    if (text.toLowerCase().includes("tidak ada data") || text.toLowerCase().includes("noresults")) {
+                        console.warn("AutoFill PPAT: Pencarian berkas tidak menghasilkan data.");
+                        return null;
                     }
-                });
 
-                return firstRow;
+                    const isMatch = !targetStr || text.includes(targetStr);
+                    if (isMatch) {
+                        console.log(`AutoFill PPAT: Menemukan baris berkas ${targetStr || "pertama"}, mengklik...`);
+                        row.scrollIntoView({ behavior: "smooth", block: "center" });
+                        await dom.delay(200);
+
+                        // Klik baris tabel
+                        row.click();
+                        const link = row.querySelector("a, button, td[onclick]");
+                        if (link && link !== row) link.click();
+
+                        dom.runInPageContext((target) => {
+                            if (!window.jQuery) return;
+                            const $ = window.jQuery;
+                            let $targetRow = $("#berkassayaplaceholder tr").first();
+                            if (target) {
+                                $("#berkassayaplaceholder tr").each(function () {
+                                    if ($(this).text().indexOf(target) !== -1) {
+                                        $targetRow = $(this);
+                                        return false;
+                                    }
+                                });
+                            }
+                            if ($targetRow && $targetRow.length) {
+                                $targetRow.trigger("click");
+                                const onclickAttr = $targetRow.attr("onclick");
+                                if (onclickAttr) {
+                                    try { eval(onclickAttr); } catch (e) {}
+                                }
+                            }
+                        }, targetStr);
+
+                        return row;
+                    }
+                }
             }
 
-            await dom.delay(200);
+            await dom.delay(300);
         }
 
-        console.warn("AutoFill PPAT: Baris berkas tidak muncul di tabel.");
+        console.warn(`AutoFill PPAT: Baris berkas ${targetStr} tidak muncul di tabel.`);
         return null;
     }
 
     /**
      * Menjalankan keseluruhan alur pencarian berkas:
-     * 1. Isi nomor & tahun berkas -> Klik Cari.
-     * 2. Tunggu 1 baris hasil di tabel -> Klik baris.
-     * 3. Tunggu tab / view berkas terbuka.
-     * 4. Download dokumen PDF.
-     * 5. Klik Step 1.
-     * 6. Simpan NIB Elektronik dan Kode Sertifikat.
+     * 1. Cek apakah berkas sudah terbuka dan cocok.
+     * 2. Jika belum, isi nomor & tahun berkas -> Klik Cari.
+     * 3. Tunggu baris hasil spesifik berkas tersebut di tabel -> Klik baris.
+     * 4. Tunggu detail berkas target selesai dimuat di #tabproses2.
+     * 5. Download dokumen PDF.
+     * 6. Klik Step 1.
+     * 7. Simpan NIB Elektronik dan Kode Sertifikat.
      */
     async function searchAndProcessBerkas(data, onProgress = null) {
         const updateStatus = (msg, type = "info") => {
@@ -551,51 +652,84 @@ PPAT.sertipikatFiller = (() => {
             }
         };
 
-        // Simpan state pending agar jika membuka tab baru, tab baru otomatis melanjutkan
+        const targetNomor = (data.nomor_berkas || "").toString().trim();
+        if (!targetNomor) {
+            updateStatus("⚠ Nomor berkas tidak valid.", "warn");
+            return null;
+        }
+
+        // Jika berkas target SUDAH terbuka di layar:
+        if (isOpenedBerkasMatching(targetNomor)) {
+            updateStatus(`⏳ Berkas No. ${targetNomor} sudah terbuka, melanjutkan ekstraksi...`, "info");
+            return await processOpenedBerkas(targetNomor, data.tahun_berkas, onProgress);
+        }
+
+        // Simpan state pending agar jika halaman reload / tab dibuka ulang, alur tetap berjalan
         await setPendingFlow(data);
 
-        updateStatus("⏳ Mengisi Nomor Berkas dan melakukan pencarian...", "info");
+        updateStatus(`⏳ Mengisi Nomor Berkas ${targetNomor} dan melakukan pencarian...`, "info");
         const searched = await searchBerkas(data);
         if (!searched) {
             updateStatus("⚠ Gagal mengisi nomor berkas atau tombol cari tidak ditemukan.", "warn");
             return null;
         }
 
-        updateStatus("⏳ Menunggu baris data berkas di tabel...", "info");
-        const row = await waitForAndClickBerkasRow(TIMING.BERKAS_TIMEOUT_MS);
+        updateStatus(`⏳ Menunggu baris berkas ${targetNomor} di tabel...`, "info");
+        const row = await waitForAndClickBerkasRow(targetNomor, TIMING.BERKAS_TIMEOUT_MS);
         if (!row) {
-            updateStatus("⚠ Data berkas tidak ditemukan di tabel.", "warn");
+            updateStatus(`⚠ Data berkas ${targetNomor} tidak ditemukan di tabel.`, "warn");
             return null;
         }
 
-        updateStatus("⏳ Membuka halaman berkas...", "info");
+        updateStatus(`⏳ Membuka detail berkas ${targetNomor}...`, "info");
 
-        // Tunggu konten view berkas (#tabproses2 / #smartwizard / #docViewerProduct) terisi
-        const opened = await dom.waitForElement(
-            "#tabproses2 #smartwizard, #tabproses2 #docViewerProduct, #docViewerProduct",
-            15000
-        );
-
-        if (opened || isOpenedBerkasLoaded()) {
-            return await processOpenedBerkas(data.nomor_berkas, data.tahun_berkas, onProgress);
+        // Tunggu hingga detail berkas target benar-benar terbuka di #tabproses2
+        const startTime = Date.now();
+        let loaded = false;
+        while (Date.now() - startTime < 25000) {
+            const isBlocking = !!document.querySelector(".blockUI.blockOverlay");
+            if (!isBlocking && isOpenedBerkasMatching(targetNomor)) {
+                loaded = true;
+                break;
+            }
+            await dom.delay(400);
         }
 
-        updateStatus("⏳ Halaman baru sedang dimuat...", "info");
+        if (loaded || isOpenedBerkasMatching(targetNomor)) {
+            return await processOpenedBerkas(targetNomor, data.tahun_berkas, onProgress);
+        }
+
+        // Fallback jika nomor tidak teridentifikasi di teks tapi viewer/step sudah muncul
+        if (isOpenedBerkasLoaded()) {
+            const currentNum = getOpenedBerkasNumber();
+            if (!currentNum || currentNum === targetNomor) {
+                return await processOpenedBerkas(targetNomor, data.tahun_berkas, onProgress);
+            }
+        }
+
+        updateStatus("⚠ Detail berkas belum selesai dimuat.", "warn");
         return null;
     }
 
     /**
      * Pengecekan otomatis saat halaman baru selesai dimuat:
-     * Jika halaman ini adalah view berkas yang terbuka, otomatis jalankan alur download & Step 1.
+     * Jika halaman ini adalah menu Berkas dan ada alur pending aktif:
      */
     async function checkAndExecuteOpenedBerkasFlow() {
-        if (!isOpenedBerkasLoaded()) return;
-
         const pending = await getPendingFlow();
-        // Hanya jalankan jika pending aktif dalam 2 menit terakhir
-        if (pending && pending.active && Date.now() - pending.timestamp < 120000) {
-            console.log("AutoFill PPAT: Mendeteksi view berkas terbuka dengan alur pending aktif!");
-            await processOpenedBerkas(pending.nomor_berkas, pending.tahun_berkas);
+        // Hanya jalankan jika pending aktif dalam 3 menit terakhir
+        if (!pending || !pending.active || Date.now() - pending.timestamp > 180000) return;
+
+        console.log("AutoFill PPAT: Mendeteksi alur pending berkas:", pending);
+
+        if (isBerkasPage()) {
+            if (isOpenedBerkasMatching(pending.nomor_berkas)) {
+                console.log(`AutoFill PPAT: Berkas ${pending.nomor_berkas} sudah terbuka, jalankan download & Step 1...`);
+                await processOpenedBerkas(pending.nomor_berkas, pending.tahun_berkas);
+            } else {
+                console.log(`AutoFill PPAT: Menjalankan pencarian berkas pending ${pending.nomor_berkas} secara otomatis...`);
+                await searchAndProcessBerkas(pending.data || pending);
+            }
         }
     }
 
@@ -689,6 +823,9 @@ PPAT.sertipikatFiller = (() => {
         isBerkasPage,
         isAjbPage,
         isOpenedBerkasLoaded,
+        getOpenedBerkasNumber,
+        isOpenedBerkasMatching,
+        switchToBerkasSearchTab,
         downloadDocumentFromOpenedPage,
         clickStep1AndReadFields,
         processOpenedBerkas,
