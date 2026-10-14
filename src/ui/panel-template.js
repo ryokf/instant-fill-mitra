@@ -24,6 +24,17 @@ PPAT.panelTemplate = (() => {
         pembeliNama: "ppat-pembeli-nama",
         pembeliNik: "ppat-pembeli-nik",
         pembeliPekerjaan: "ppat-pembeli-pekerjaan",
+        dropzoneBphtb: "ppat-dropzone-bphtb",
+        inputBphtb: "ppat-input-bphtb",
+        statusBphtb: "ppat-status-bphtb",
+        cardBphtb: "ppat-card-bphtb",
+        bphtbNop: "ppat-bphtb-nop",
+        bphtbLuas: "ppat-bphtb-luas",
+        bphtbNjop: "ppat-bphtb-njop",
+        bphtbNoBukti: "ppat-bphtb-nobukti",
+        btnFillPbbBphtb: "ppat-btn-fill-pbb-bphtb",
+        btnFillPbbOnly: "ppat-btn-fill-pbb-only",
+        btnFillBphtbOnly: "ppat-btn-fill-bphtb-only",
     });
 
     const HTML = `
@@ -80,6 +91,36 @@ PPAT.panelTemplate = (() => {
                         <div class="ppat-person-meta">NIK: <b id="${IDS.pembeliNik}">-</b></div>
                         <div class="ppat-person-meta">Pekerjaan: <span id="${IDS.pembeliPekerjaan}">-</span></div>
                         <button id="${IDS.btnFillPembeli}" class="ppat-btn-fill" style="margin-top:8px;">Isi Ulang Form Pembeli</button>
+                    </div>
+                </div>
+
+                <div class="ppat-divider"></div>
+
+                <div class="ppat-form-group">
+                    <label class="ppat-label">PBB & BPHTB <span class="ppat-label-hint">(upload dokumen BPHTB)</span>:</label>
+                    <div id="${IDS.dropzoneBphtb}" class="ppat-dropzone" title="Klik atau seret berkas PDF / Gambar Dokumen BPHTB ke sini">
+                        <input type="file" id="${IDS.inputBphtb}" accept=".pdf,.png,.jpg,.jpeg" style="display:none">
+                        <div class="ppat-dropzone-inner">
+                            <span class="ppat-dropzone-icon">📋</span>
+                            <div class="ppat-dropzone-texts">
+                                <span class="ppat-dropzone-title">Upload Dokumen BPHTB</span>
+                                <span class="ppat-dropzone-sub">Klik / seret file untuk auto-fill PBB & BPHTB</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="${IDS.statusBphtb}" class="ppat-status hidden" style="margin-top:6px; margin-bottom:0;"></div>
+                    <div id="${IDS.cardBphtb}" class="ppat-person-card hidden">
+                        <div class="ppat-person-card-header">
+                            <span class="ppat-person-name" id="${IDS.bphtbNop}">-</span>
+                            <span class="ppat-person-badge">PBB & BPHTB</span>
+                        </div>
+                        <div class="ppat-person-meta">Luas: <b id="${IDS.bphtbLuas}">-</b> M² | NJOP/M²: <b id="${IDS.bphtbNjop}">-</b></div>
+                        <div class="ppat-person-meta">No. Bukti Bayar: <b id="${IDS.bphtbNoBukti}">-</b></div>
+                        <div style="display:flex; gap:6px; margin-top:8px;">
+                            <button id="${IDS.btnFillPbbBphtb}" class="ppat-btn-fill" style="flex:2;" title="Isi form PBB lalu lanjut form BPHTB">Isi Lengkap</button>
+                            <button id="${IDS.btnFillPbbOnly}" class="ppat-btn-fill" style="flex:1; background:#4a5568;" title="Isi form PBB saja">Isi PBB</button>
+                            <button id="${IDS.btnFillBphtbOnly}" class="ppat-btn-fill" style="flex:1; background:#4a5568;" title="Isi form BPHTB saja">Isi BPHTB</button>
+                        </div>
                     </div>
                 </div>
 

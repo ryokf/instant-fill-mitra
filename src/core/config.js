@@ -4,6 +4,7 @@
  */
 PPAT.config = Object.freeze({
     BACKEND_URL: "http://127.0.0.1:3001/api/extract-pembeli",
+    BPHTB_BACKEND_URL: "http://127.0.0.1:3002/api/extract-bphtb",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -11,6 +12,9 @@ PPAT.config = Object.freeze({
         PERSETUJUAN_FORM_TIMEOUT_MS: 5000,
         SAKSI_FORM_TIMEOUT_MS: 5000,
         PEMBELI_FORM_TIMEOUT_MS: 5000,
+        PBB_FORM_TIMEOUT_MS: 8000,
+        BPHTB_FORM_TIMEOUT_MS: 8000,
+        ZNT_WAIT_TIMEOUT_MS: 10000,
         FORM_SETTLE_DELAY_MS: 300, // jeda agar form hasil AJAX selesai dirender
         SUBMIT_DELAY_MS: 250, // jeda setelah input terisi sebelum menekan Tambah
         DETECT_INTERVAL_MS: 2500, // pengecekan berkala daftar penjual di web
@@ -84,6 +88,33 @@ PPAT.config = Object.freeze({
                 ["#frmtipepihak2Dukcapil #tJENIS_PEKERJAAN", "pekerjaan"],
             ],
         }),
+
+        pbb: Object.freeze({
+            container: "#inputPBBplaceholder",
+            dropdownSertifikat: "#alashakid",
+            form: "#frmPBBDetail",
+            luasSertifikat: "#luassertipikat",
+            nilaiZnt: "#nilaiznt",
+            inputFile: "#txtUploadFilePBB",
+            btnTambah: "#btn-tambahpbb",
+            daftarPlaceholder: "#daftarpbbplaceholder",
+            daftarItems: "#daftarpbbplaceholder li",
+            fields: [
+                ["#frmPBBDetail #nomor", "nop"],
+                ["#frmPBBDetail #tahun", "tahun"],
+                ["#frmPBBDetail #luas", "luas_tanah"],
+                ["#frmPBBDetail #nilai", "njop_m2"],
+            ],
+        }),
+
+        bphtb: Object.freeze({
+            container: "#inputBPHTBplaceholder",
+            dropdownNop: "#obyekpajakid",
+            form: "#frmBPHTB",
+            inputNomorBukti: "#nomorbphtb",
+            inputFile: "#txtUploadFileBPHTB",
+            btnTambah: "#btn-tambahbphtb",
+        }),
     }),
 
     MESSAGES: Object.freeze({
@@ -99,7 +130,13 @@ PPAT.config = Object.freeze({
         saksiFilled: (nama) => `Data Saksi (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
         pembeliFormMissing: "Form Pihak Pembeli tidak ditemukan. Pastikan Anda berada di bagian Pihak Pembeli (Pihak 2).",
         pembeliFilled: (nama) => `Data Pembeli (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
+        sertifikatBelumTerisi: "Sertifikat belum terisi di web PPAT. PBB dan BPHTB hanya bisa diisi jika sertifikat sudah terisi.",
+        pbbFormMissing: "Form PBB tidak ditemukan di halaman PPAT.",
+        pbbFilled: "Data PBB berhasil diisi!",
+        bphtbFormMissing: "Form BPHTB tidak ditemukan di halaman PPAT.",
+        bphtbFilled: "Data BPHTB berhasil diisi!",
         selectPtFirst: "Pilih PT terlebih dahulu!",
         backendOffline: "Service pembeli-backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan service terlebih dahulu.",
+        backendBphtbOffline: "Service pbb-bphtb-backend belum aktif di http://127.0.0.1:3002.\nSilakan jalankan start-pbb-backend.bat terlebih dahulu.",
     }),
 });
