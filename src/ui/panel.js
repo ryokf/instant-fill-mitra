@@ -391,7 +391,19 @@ PPAT.panel = (() => {
                     renderSertipikatCard(lastSertipikatData);
 
                     // Cek di halaman mana pengguna sedang berada:
-                    if (sertipikatFiller.isBerkasPage()) {
+                    if (sertipikatFiller.isOpenedBerkasLoaded()) {
+                        // Di view berkas yang sudah terbuka: langsung unduh dokumen & ambil Step 1
+                        setUploadStatus("⏳ View berkas terdeteksi! Mengunduh dokumen & mengambil Step 1...", "info");
+                        const res = await sertipikatFiller.processOpenedBerkas(
+                            lastSertipikatData.nomor_berkas,
+                            lastSertipikatData.tahun_berkas,
+                            (msg, type) => setUploadStatus(msg, type)
+                        );
+                        if (res) {
+                            lastSertipikatData = res;
+                            renderSertipikatCard(res);
+                        }
+                    } else if (sertipikatFiller.isBerkasPage()) {
                         // Di halaman Berkas: otomatis jalankan alur cari berkas, download dokumen, klik step 1, ambil NIB & kode
                         setUploadStatus("⏳ Berada di menu Berkas. Menjalankan pencarian berkas otomatis...", "info");
                         const res = await sertipikatFiller.searchAndProcessBerkas(lastSertipikatData, (msg, type) => {
@@ -469,7 +481,18 @@ PPAT.panel = (() => {
                     return;
                 }
 
-                if (sertipikatFiller.isBerkasPage()) {
+                if (sertipikatFiller.isOpenedBerkasLoaded()) {
+                    setUploadStatus("⏳ Memproses berkas yang terbuka (unduh dokumen & Step 1)...", "info");
+                    const res = await sertipikatFiller.processOpenedBerkas(
+                        lastSertipikatData.nomor_berkas,
+                        lastSertipikatData.tahun_berkas,
+                        (msg, type) => setUploadStatus(msg, type)
+                    );
+                    if (res) {
+                        lastSertipikatData = res;
+                        renderSertipikatCard(res);
+                    }
+                } else if (sertipikatFiller.isBerkasPage()) {
                     setUploadStatus("⏳ Menjalankan pencarian berkas...", "info");
                     const res = await sertipikatFiller.searchAndProcessBerkas(lastSertipikatData, (msg, type) => {
                         setUploadStatus(msg, type);

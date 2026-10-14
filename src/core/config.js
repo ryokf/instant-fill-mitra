@@ -137,10 +137,11 @@ PPAT.config = Object.freeze({
             tableBody: "#berkassayaplaceholder",
             tabMelengkapi: "#melengkapi-tab",
             tabProses2: "#tabproses2",
-            wizardSteps: "ul.step-anchor li a, ul.wizard_steps li a, a[href*='step-1']",
-            downloadLinks: "a[href*='Download' i], a[href*='download' i], a[href*='Unduh' i], a[href*='unduh' i], a[download], a:has(i.fa-download), .btn-download, a.btn:has(i.fa-cloud-download)",
-            inputNibElektronik: "#nibelektronik",
-            inputKodeSertipikat: "#kodesertipikat",
+            step1Anchor: "ul.wizard_steps a[href*='#sertifikat'], a[data-content-url*='Step1'], ul.wizard_steps li:first-child a, ul.step-anchor a[href*='step-1']",
+            inputNibElektronik: "#DataSertipikat_inputsertipikat_nibelektronik, #nibelektronik, input[name*='nibelektronik' i]",
+            inputKodeSertipikat: "#DataSertipikat_inputsertipikat_kodesertipikat, #kodesertipikat, input[name*='kodesertipikat' i]",
+            docViewer: "#docViewerProduct",
+            docViewerIframe: "#docViewerProduct iframe",
         }),
 
         sertipikat: Object.freeze({

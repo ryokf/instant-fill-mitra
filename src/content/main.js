@@ -3,9 +3,16 @@
  * Dimuat PALING AKHIR setelah semua modul lain (lihat manifest.json).
  */
 (function main() {
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", PPAT.panel.create);
-    } else {
+    function init() {
         PPAT.panel.create();
+        if (PPAT.sertipikatFiller && typeof PPAT.sertipikatFiller.checkAndExecuteOpenedBerkasFlow === "function") {
+            PPAT.sertipikatFiller.checkAndExecuteOpenedBerkasFlow();
+        }
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+    } else {
+        init();
     }
 })();
