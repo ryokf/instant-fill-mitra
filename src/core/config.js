@@ -6,6 +6,7 @@ PPAT.config = Object.freeze({
     BACKEND_URL: "http://127.0.0.1:3001/api/extract-pembeli",
     BPHTB_BACKEND_URL: "http://127.0.0.1:3002/api/extract-bphtb",
     SERTIPIKAT_BACKEND_URL: "http://127.0.0.1:3003/api/extract-sertipikat",
+    PPH_BACKEND_URL: "http://127.0.0.1:3004/api/extract-pph",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -18,6 +19,7 @@ PPAT.config = Object.freeze({
         SERTIPIKAT_FORM_TIMEOUT_MS: 8000,
         PBB_FORM_TIMEOUT_MS: 8000,
         BPHTB_FORM_TIMEOUT_MS: 8000,
+        PPH_FORM_TIMEOUT_MS: 8000,
         ZNT_WAIT_TIMEOUT_MS: 10000,
         FORM_SETTLE_DELAY_MS: 300, // jeda agar form hasil AJAX selesai dirender
         SUBMIT_DELAY_MS: 250, // jeda setelah input terisi sebelum menekan Tambah
@@ -155,6 +157,17 @@ PPAT.config = Object.freeze({
             daftarPlaceholder: "#daftarhatplaceholder",
             daftarItems: "#daftarhatplaceholder li",
         }),
+
+        pph: Object.freeze({
+            container: "#inputPPHplaceholder, #inputPPhplaceholder, #inputpphplaceholder, #frmPPH, #frmPph, #section-pph",
+            inputNomorSuket: "#nomorsuket, #nosuket, #txtNomorSuket, #nomor_suket, #suket, input[name*='suket' i], input[placeholder*='suket' i], input[placeholder*='KET-' i]",
+            btnCariSuket: "#btncarisuket, #btnCariSuket, #btn-cari-suket, #btncari, #btnCariPPH, button[id*='suket' i]",
+            inputNpwp: "#tNPWP, #npwp, #npwppph, input[name*='npwp' i], input[id*='npwp' i]",
+            inputFile: "#txtUploadFilePPH, #txtUploadFilePPh, input[name*='UploadFilePPH'], .btn-file input[type='file'], input[type='file']",
+            btnTambah: "#btn-tambahpph, #btn-tambahPPH, #btn-tambah",
+            daftarPlaceholder: "#daftarpphplaceholder",
+            daftarItems: "#daftarpphplaceholder li",
+        }),
     }),
 
     MESSAGES: Object.freeze({
@@ -183,9 +196,12 @@ PPAT.config = Object.freeze({
         pbbFilled: "Data PBB berhasil diisi!",
         bphtbFormMissing: "Form BPHTB tidak ditemukan di halaman PPAT.",
         bphtbFilled: "Data BPHTB berhasil diisi!",
+        pphFormMissing: "Form PPh tidak ditemukan di halaman PPAT.",
+        pphFilled: "Data PPh berhasil diisi!",
         selectPtFirst: "Pilih PT terlebih dahulu!",
         backendOffline: "Service pembeli-backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan service terlebih dahulu.",
         backendBphtbOffline: "Service pbb-bphtb-backend belum aktif di http://127.0.0.1:3002.\nSilakan jalankan start-pbb-backend.bat terlebih dahulu.",
         backendSertipikatOffline: "Service sertipikat-backend belum aktif di http://127.0.0.1:3003.\nSilakan jalankan start-sertipikat-backend.bat terlebih dahulu.",
+        backendPphOffline: "Service pph-backend belum aktif di http://127.0.0.1:3004.\nSilakan jalankan start-pph-backend.bat terlebih dahulu.",
     }),
 });

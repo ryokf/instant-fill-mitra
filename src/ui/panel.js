@@ -30,6 +30,7 @@ PPAT.panel = (() => {
         setupAktaUpload(els);
         setupSertipikatUpload(els);
         setupBphtbUpload(els);
+        setupPphUpload(els);
     }
 
     /** Memeriksa apakah opsi otomatis klik "Tambah" sedang aktif di panel. */
@@ -780,6 +781,141 @@ PPAT.panel = (() => {
                         pickBtn.onclick = () => PPAT.pbbBphtbFiller.openBphtbFilePicker();
                     }
                 }
+            });
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Upload & Auto-Fill PPh dari Dokumen Surat Keterangan PPh via pph-backend
+    // -------------------------------------------------------------------------
+
+    function setupPphUpload(els) {
+        const {
+            dropzonePph,
+            inputPph,
+            statusPph,
+            cardPph,
+            pphSuket,
+            pphNpwp,
+            pphNama,
+            pphTanggal,
+            btnFillPph,
+        } = els;
+
+        if (!dropzonePph || !inputPph) return;
+
+        let lastPphData = null;
+
+        const setUploadStatus = (text, type = "info", isHtml = false) => {
+            if (!statusPph) return;
+            statusPph.classList.remove("hidden");
+            statusPph.className = "ppat-status " + type;
+            if (isHtml) {
+                statusPph.innerHTML = text;
+            } else {
+                statusPph.textContent = text;
+            }
+        };
+
+        const renderPphCard = (data) => {
+            if (!cardPph) return;
+            pphSuket.textContent = data.nomor_suket || "Dokumen PPh";
+            pphNpwp.textContent = data.npwp_formatted || data.npwp || "-";
+            pphNama.textContent = data.nama_wp || "-";
+            pphTanggal.textContent = data.tanggal_suket || "-";
+            cardPph.classList.remove("hidden");
+        };
+
+        const handlePphFile = async (file) => {
+            if (!file) return;
+
+            const name = file.name.toLowerCase();
+            const isValid = name.endsWith(".pdf") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
+            if (!isValid) {
+                setUploadStatus("Berkas harus berformat PDF (.pdf) atau Gambar (.jpg, .png).", "warn");
+                return;
+            }
+
+            dropzonePph.classList.add("loading");
+            setUploadStatus("⏳ Membaca & mengekstrak data PPh dari dokumen...", "info");
+
+            const formData = new FormData();
+            formData.append("file", file, file.name);
+
+            try {
+                const response = await fetch(config.PPH_BACKEND_URL, {
+                    method: "POST",
+                    body: formData,
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success && result.data) {
+                    lastPphData = result.data;
+                    renderPphCard(result.data);
+
+                    setUploadStatus("⏳ Mengisi Form PPh, mencari suket & membuka pilih file...", "info");
+
+                    const ok = await PPAT.pphFiller.fill(result.data, {
+                        autoSubmit: isAutoSubmit(),
+                        showAlert: false,
+                    });
+
+                    if (ok) {
+                        setUploadStatus("✔ Form PPh berhasil diisi & dialog Pilih File dibuka!", "ok");
+                    } else {
+                        setUploadStatus("⚠ Pengisian form PPh terhenti atau kolom belum siap.", "warn");
+                    }
+                } else {
+                    const err = result.error || result.message || "Gagal memproses dokumen PPh.";
+                    setUploadStatus(`⚠ ${err}`, "warn");
+                }
+            } catch (err) {
+                console.error("AutoFill PPAT - PPh Backend upload error:", err);
+                setUploadStatus("⚠ Backend PPh offline (127.0.0.1:3004). Jalankan start-pph-backend.bat.", "warn");
+            } finally {
+                dropzonePph.classList.remove("loading");
+                inputPph.value = "";
+            }
+        };
+
+        // Klik untuk memilih file
+        dropzonePph.addEventListener("click", () => {
+            if (!dropzonePph.classList.contains("loading")) {
+                inputPph.click();
+            }
+        });
+
+        inputPph.addEventListener("change", (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) handlePphFile(file);
+        });
+
+        // Drag & Drop
+        dropzonePph.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropzonePph.classList.add("dragover");
+        });
+
+        dropzonePph.addEventListener("dragleave", (e) => {
+            e.preventDefault();
+            dropzonePph.classList.remove("dragover");
+        });
+
+        dropzonePph.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzonePph.classList.remove("dragover");
+            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (file) handlePphFile(file);
+        });
+
+        // Tombol isi ulang manual
+        if (btnFillPph) {
+            btnFillPph.addEventListener("click", async () => {
+                if (!lastPphData) return;
+                setUploadStatus("⏳ Mengisi Form PPh...", "info");
+                const ok = await PPAT.pphFiller.fill(lastPphData, { autoSubmit: isAutoSubmit(), showAlert: false });
+                if (ok) setUploadStatus("✔ Form PPh berhasil diisi!", "ok");
             });
         }
     }
