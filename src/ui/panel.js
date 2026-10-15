@@ -89,7 +89,15 @@ PPAT.panel = (() => {
         personList.render(listEl, pt ? pt.persetujuan : [], {
             emptyMessage: "-- Pilih PT Dulu --",
             tooltip: "Klik untuk mengisi form Pihak Persetujuan",
-            onSelect: (orang) => PPAT.persetujuanFiller.fill(orang, { autoSubmit: isAutoSubmit() }),
+            onSelect: (orang) => {
+                PPAT.selectedPersetujuan = orang;
+                const ptName = pt ? pt.penjual.nama : null;
+                PPAT.persetujuanFiller.fill(orang, {
+                    autoSubmit: isAutoSubmit(),
+                    autoUploadDocs: isAutoUploadPtDocs(),
+                    ptName,
+                });
+            },
         });
     }
 

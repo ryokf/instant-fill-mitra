@@ -82,6 +82,10 @@ PPAT.config = Object.freeze({
         persetujuan: Object.freeze({
             form: "#frmPihaksetujuDukcapil",
             btnTambah: "#btn-tambahPihaksetujuNIK",
+            tipePihak: "#tipepihaksetuju",
+            jenisPihak: "#jenispihak",
+            btnUnggah: "#daftarpemohonpihaksetujuplaceholder a[onclick*='unggahpihakakta']",
+            daftarPlaceholder: "#daftarpemohonpihaksetujuplaceholder",
             fields: [
                 ["#tNIKpihaksetuju", "nik"],
                 ["#tNAMA_LENGKAPpihaksetuju", "nama"],

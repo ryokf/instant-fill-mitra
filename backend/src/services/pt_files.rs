@@ -18,6 +18,7 @@ pub struct PtFolderMatch {
     pub folder_path: String,
     pub akta: PtDocInfo,
     pub npwp: PtDocInfo,
+    pub ktp: Option<PtDocInfo>,
 }
 
 /// Membersihkan nama untuk pencocokan toleran (hanya huruf dan angka, UPPERCASE).
@@ -103,9 +104,9 @@ pub fn find_pt_folder(base_dir: &str, pt_query: &str) -> Option<(String, PathBuf
     }
 }
 
-/// Mencari berkas dokumen di dalam folder PT berdasarkan jenisnya ("akta" atau "npwp").
+/// Mencari berkas dokumen di dalam folder PT berdasarkan jenisnya ("akta", "npwp", atau "ktp").
 /// Hanya mencari berkas di root folder PT (mengabaikan subdirektori seperti OLD DATA).
-pub fn find_pt_document(folder_path: &Path, doc_type: &str) -> Option<(String, PathBuf, u64)> {
+pub fn find_pt_document(folder_path: &Path, doc_type: &str, person_name: Option<&str>) -> Option<(String, PathBuf, u64)> {
     let entries = match std::fs::read_dir(folder_path) {
         Ok(e) => e,
         Err(_) => return None,
@@ -114,6 +115,7 @@ pub fn find_pt_document(folder_path: &Path, doc_type: &str) -> Option<(String, P
     let doc_type_lower = doc_type.to_lowercase();
     let is_akta = doc_type_lower.contains("akta") || doc_type_lower.contains("pendirian");
     let is_npwp = doc_type_lower.contains("npwp") || doc_type_lower.contains("npw");
+    let is_ktp = doc_type_lower.contains("ktp");
 
     let mut best_file: Option<(String, PathBuf, u64)> = None;
     let mut best_score: u32 = 0;
@@ -168,6 +170,38 @@ pub fn find_pt_document(folder_path: &Path, doc_type: &str) -> Option<(String, P
             if score > 0 && file_name_upper.contains("LEGALISIR") {
                 score += 3;
             }
+        } else if is_ktp {
+            if file_name_upper.contains("KTP") {
+                score += 20;
+            }
+
+            if let Some(pname) = person_name {
+                let clean_pname = clean_name(pname);
+                let clean_fname = clean_name(&file_name);
+
+                let tokens: Vec<&str> = pname.split_whitespace().collect();
+                for token in tokens {
+                    let clean_t = clean_name(token);
+                    if clean_t.len() >= 3 {
+                        if clean_fname.contains(&clean_t) {
+                            score += 40;
+                        } else if clean_t.len() >= 4 && clean_fname.contains(&clean_t[..4]) {
+                            score += 25;
+                        }
+                    }
+                }
+
+                if clean_fname.contains(&clean_pname) {
+                    score += 50;
+                }
+            }
+
+            if score > 0 && file_name_upper.contains("PERSETUJUAN") {
+                score += 15;
+            }
+            if score > 0 && file_name_upper.contains("BARU") {
+                score += 5;
+            }
         }
 
         if score > best_score {
@@ -185,13 +219,14 @@ pub fn find_pt_document(folder_path: &Path, doc_type: &str) -> Option<(String, P
     }
 }
 
-/// Mendapatkan informasi lengkap folder PT beserta dokumen Akta Pendirian dan NPWP.
-pub fn get_pt_info(base_dir: &str, pt_query: &str) -> Result<PtFolderMatch, String> {
+/// Mendapatkan informasi lengkap folder PT beserta dokumen Akta Pendirian, NPWP, dan KTP.
+pub fn get_pt_info(base_dir: &str, pt_query: &str, person_name: Option<&str>) -> Result<PtFolderMatch, String> {
     let (folder_name, folder_path) = find_pt_folder(base_dir, pt_query)
         .ok_or_else(|| format!("Folder PT yang cocok dengan '{}' tidak ditemukan di '{}'", pt_query, base_dir))?;
 
-    let akta_match = find_pt_document(&folder_path, "akta");
-    let npwp_match = find_pt_document(&folder_path, "npwp");
+    let akta_match = find_pt_document(&folder_path, "akta", None);
+    let npwp_match = find_pt_document(&folder_path, "npwp", None);
+    let ktp_match = find_pt_document(&folder_path, "ktp", person_name);
 
     let akta_info = match akta_match {
         Some((fname, fpath, fsize)) => PtDocInfo {
@@ -223,11 +258,19 @@ pub fn get_pt_info(base_dir: &str, pt_query: &str) -> Result<PtFolderMatch, Stri
         },
     };
 
+    let ktp_info = ktp_match.map(|(fname, fpath, fsize)| PtDocInfo {
+        found: true,
+        filename: Some(fname),
+        file_path: Some(fpath.to_string_lossy().to_string()),
+        size: Some(fsize),
+    });
+
     Ok(PtFolderMatch {
         pt_query: pt_query.to_string(),
         folder_name,
         folder_path: folder_path.to_string_lossy().to_string(),
         akta: akta_info,
         npwp: npwp_info,
+        ktp: ktp_info,
     })
 }

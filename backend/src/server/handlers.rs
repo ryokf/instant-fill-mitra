@@ -319,11 +319,12 @@ pub async fn extract_pph_handler(multipart: Multipart) -> Response {
 }
 
 // -----------------------------------------------------------------------------
-// Handler: Info File PT (Akta Pendirian & NPWP)
+// Handler: Info File PT (Akta Pendirian, NPWP, & KTP)
 // -----------------------------------------------------------------------------
 #[derive(Deserialize)]
 pub struct PtInfoQuery {
     pub pt_name: String,
+    pub person_name: Option<String>,
     pub base_dir: Option<String>,
 }
 
@@ -331,11 +332,11 @@ pub async fn get_pt_files_info_handler(Query(query): Query<PtInfoQuery>) -> Resp
     let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PT_DIR);
     println!("[API: PT Info] Mencari info dokumen untuk PT: '{}' di '{}'", query.pt_name, base_dir);
 
-    match pt_files::get_pt_info(base_dir, &query.pt_name) {
+    match pt_files::get_pt_info(base_dir, &query.pt_name, query.person_name.as_deref()) {
         Ok(info) => {
             println!(
-                "[API: PT Info] Berhasil - Folder: {}, Akta: {:?}, NPWP: {:?}",
-                info.folder_name, info.akta.filename, info.npwp.filename
+                "[API: PT Info] Berhasil - Folder: {}, Akta: {:?}, NPWP: {:?}, KTP: {:?}",
+                info.folder_name, info.akta.filename, info.npwp.filename, info.ktp.as_ref().and_then(|k| k.filename.as_ref())
             );
             (
                 StatusCode::OK,
@@ -359,20 +360,21 @@ pub async fn get_pt_files_info_handler(Query(query): Query<PtInfoQuery>) -> Resp
 }
 
 // -----------------------------------------------------------------------------
-// Handler: Download File PT (Akta Pendirian atau NPWP)
+// Handler: Download File PT (Akta Pendirian, NPWP, atau KTP)
 // -----------------------------------------------------------------------------
 #[derive(Deserialize)]
 pub struct PtDownloadQuery {
     pub pt_name: String,
     pub doc_type: String,
+    pub person_name: Option<String>,
     pub base_dir: Option<String>,
 }
 
 pub async fn get_pt_file_download_handler(Query(query): Query<PtDownloadQuery>) -> Response {
     let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PT_DIR);
     println!(
-        "[API: PT Download] Mengambil berkas jenis '{}' untuk PT: '{}'",
-        query.doc_type, query.pt_name
+        "[API: PT Download] Mengambil berkas jenis '{}' untuk PT: '{}' (person: {:?})",
+        query.doc_type, query.pt_name, query.person_name
     );
 
     let pt_match = match pt_files::find_pt_folder(base_dir, &query.pt_name) {
@@ -390,7 +392,7 @@ pub async fn get_pt_file_download_handler(Query(query): Query<PtDownloadQuery>) 
         }
     };
 
-    let doc_match = match pt_files::find_pt_document(&pt_match.1, &query.doc_type) {
+    let doc_match = match pt_files::find_pt_document(&pt_match.1, &query.doc_type, query.person_name.as_deref()) {
         Some(m) => m,
         None => {
             let msg = format!(

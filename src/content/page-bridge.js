@@ -101,7 +101,9 @@
 
             // 6. Pastikan idreferensi2, pihak2, dan aktanoninput2 terisi
             if (!window.idreferensi2 || !window.pihak2) {
-                const pUrl = document.querySelector("#daftarpihak1placeholder p.url[data-refid]");
+                const pUrl =
+                    document.querySelector("#daftarpemohonpihaksetujuplaceholder p.url[data-refid]") ||
+                    document.querySelector("#daftarpihak1placeholder p.url[data-refid]");
                 if (pUrl) {
                     window.idreferensi2 = pUrl.getAttribute("data-refid");
                     window.pihak2 = pUrl.getAttribute("data-pihak");
