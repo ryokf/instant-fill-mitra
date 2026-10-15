@@ -8,7 +8,7 @@
 
     let isUploadInProgress = false;
 
-    // Hook window.showmsg untuk memastikan backdrop ganda tidak pernah menumpuk
+    // Hook window.showmsg untuk memastikan backdrop ganda tidak pernah menumpuk dan klik OK secara cepat
     function hookShowmsg() {
         const originalShowmsg = window.showmsg;
         if (typeof originalShowmsg === "function" && !window.__ppat_showmsg_hooked) {
@@ -16,7 +16,19 @@
             window.showmsg = function (judul, isi) {
                 // Bersihkan backdrop lama jika ada sebelum membuka modal baru
                 document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
-                return originalShowmsg.apply(this, arguments);
+                const res = originalShowmsg.apply(this, arguments);
+
+                // Kirim sinyal event ke content script seketika
+                window.postMessage({ type: "PPAT_SHOWMSG_EVENT", title: judul, message: isi }, "*");
+
+                // Begitu modal "Data telah diunggah" muncul, tekan tombol OK secepatnya (100ms)
+                if (isi && typeof isi === "string" && isi.toLowerCase().includes("data telah diunggah")) {
+                    console.log("[PageBridge] Notifikasi 'Data telah diunggah' terdeteksi via showmsg. Menekan tombol OK dalam 100ms...");
+                    setTimeout(() => {
+                        pressModalOkButton();
+                    }, 100);
+                }
+                return res;
             };
         }
     }
@@ -79,7 +91,7 @@
             }
 
             // Beri jeda kecil agar change handler bawaan halaman selesai
-            await new Promise((resolve) => setTimeout(resolve, 400));
+            await new Promise((resolve) => setTimeout(resolve, 150));
 
             // 5. Pastikan kembali dfupload2 masih tersimpan sebelum simpan
             if (!window.dfupload2) {
@@ -168,13 +180,16 @@
                 if (window.bootstrap && window.bootstrap.Modal) {
                     const inst = window.bootstrap.Modal.getInstance(modalEl);
                     if (inst) inst.hide();
+                } else if (window.jQuery && typeof window.jQuery(modalEl).modal === "function") {
+                    window.jQuery(modalEl).modal("hide");
                 }
             } catch (_) {}
 
-            // Bersihkan backdrop ganda secara tuntas setelah jeda animasi
+            // Bersihkan backdrop dan modal secara instan
+            cleanupBackdropAndModal(modalEl);
             setTimeout(() => {
                 cleanupBackdropAndModal(modalEl);
-            }, 300);
+            }, 50);
         }
 
         window.postMessage({ type: "PPAT_DISMISS_MODAL_RESPONSE", success: clicked }, "*");
