@@ -9,6 +9,8 @@ PPAT.config = Object.freeze({
     PPH_BACKEND_URL: "http://127.0.0.1:3001/api/extract-pph",
     PT_FILE_INFO_URL: "http://127.0.0.1:3001/api/pt-files-info",
     PT_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pt-file",
+    PEMBELI_FILES_INFO_URL: "http://127.0.0.1:3001/api/pembeli-files-info",
+    PEMBELI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pembeli-file",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -114,6 +116,8 @@ PPAT.config = Object.freeze({
             form: "#frmtipepihak2Dukcapil",
             btnTambah: "#btn-tambahtipepihak2NIK",
             tipeBukti: "#frmtipepihak2Dukcapil select#tipebuktipihak2",
+            btnUnggah: "#daftarpihak2placeholder a[onclick*='unggahpihakakta']",
+            daftarPlaceholder: "#daftarpihak2placeholder",
             fields: [
                 ["#frmtipepihak2Dukcapil #tNIKPemilik", "nik"],
                 ["#frmtipepihak2Dukcapil #tNAMA_LENGKAP", "nama"],
@@ -122,6 +126,19 @@ PPAT.config = Object.freeze({
                 ["#frmtipepihak2Dukcapil #tTANGGAL_LAHIR", "tgl_lahir"],
                 ["#frmtipepihak2Dukcapil #tJENIS_PEKERJAAN", "pekerjaan"],
             ],
+        }),
+
+        pembeliUpload: Object.freeze({
+            btnUnggah: "#daftarpihak2placeholder a[onclick*='unggahpihakakta']",
+            daftarPlaceholder: "#daftarpihak2placeholder",
+            selectTipeUnggah: "#tipeunggah2",
+            inputFile: "#txtUploadFileNonInputupload2",
+            btnSimpanUpload: "#divnewdokumenupload2 button[onclick*='simpandokumenupload2']",
+            divNewDokumen: "#divnewdokumenupload2",
+            divSideNav: "#divsidenavupload2",
+            modal: "#globalModal",
+            modalTitle: "#globalModalTitle",
+            modalBtnOk: "#globalModal button.btn-primary, #globalModal button[data-bs-dismiss='modal'], #globalModal button, #myModal #btn-ok, #myModal button",
         }),
 
         pbb: Object.freeze({

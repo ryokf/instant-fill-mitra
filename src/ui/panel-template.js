@@ -62,6 +62,7 @@ PPAT.panelTemplate = (() => {
         pphNama: "ppat-pph-nama",
         pphTanggal: "ppat-pph-tanggal",
         btnFillPph: "ppat-btn-fill-pph",
+        btnUploadPembeliDocs: "ppat-btn-upload-pembelidocs",
     });
 
     const HTML = `
@@ -187,6 +188,9 @@ PPAT.panelTemplate = (() => {
                             <div class="ppat-person-meta">NIK: <b id="${IDS.pembeliNik}">-</b></div>
                             <div class="ppat-person-meta">Pekerjaan: <span id="${IDS.pembeliPekerjaan}">-</span></div>
                             <button id="${IDS.btnFillPembeli}" class="ppat-btn-fill" style="margin-top:8px;">Isi Ulang Form Pembeli</button>
+                            <button id="${IDS.btnUploadPembeliDocs}" class="ppat-btn-action" style="margin-top: 6px; background: #0284c7; color: #fff; width: 100%; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;" title="Upload KK & KTP Pembeli ke website ATR/BPN">
+                                📤 Upload Dokumen Pembeli (KK & KTP)
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -21,12 +21,35 @@
                 // Kirim sinyal event ke content script seketika
                 window.postMessage({ type: "PPAT_SHOWMSG_EVENT", title: judul, message: isi }, "*");
 
-                // Begitu modal "Data telah diunggah" muncul, tekan tombol OK secepatnya (100ms)
-                if (isi && typeof isi === "string" && isi.toLowerCase().includes("data telah diunggah")) {
-                    console.log("[PageBridge] Notifikasi 'Data telah diunggah' terdeteksi via showmsg. Menekan tombol OK dalam 100ms...");
-                    setTimeout(() => {
-                        pressModalOkButton();
-                    }, 100);
+                // Begitu modal "Data telah diunggah" atau "telah disimpan" muncul, tekan tombol OK secepatnya (100ms)
+                if (isi && typeof isi === "string") {
+                    const isiLower = isi.toLowerCase();
+                    if (isiLower.includes("data telah diunggah") || isiLower.includes("telah disimpan") || isiLower.includes("berhasil disimpan")) {
+                        console.log("[PageBridge] Notifikasi modal otomatis terdeteksi via showmsg ('" + isi + "'). Menekan tombol OK dalam 100ms...");
+                        setTimeout(() => {
+                            pressModalOkButton();
+                        }, 100);
+                    }
+                }
+                return res;
+            };
+        }
+
+        const originalShowmsg1 = window.showmsg1;
+        if (typeof originalShowmsg1 === "function" && !window.__ppat_showmsg1_hooked) {
+            window.__ppat_showmsg1_hooked = true;
+            window.showmsg1 = function (judul, isi) {
+                document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+                const res = originalShowmsg1.apply(this, arguments);
+                window.postMessage({ type: "PPAT_SHOWMSG_EVENT", title: judul, message: isi }, "*");
+                if (isi && typeof isi === "string") {
+                    const isiLower = isi.toLowerCase();
+                    if (isiLower.includes("data telah diunggah") || isiLower.includes("telah disimpan") || isiLower.includes("berhasil disimpan")) {
+                        console.log("[PageBridge] Notifikasi modal otomatis terdeteksi via showmsg1 ('" + isi + "'). Menekan tombol OK dalam 100ms...");
+                        setTimeout(() => {
+                            pressModalOkButton();
+                        }, 100);
+                    }
                 }
                 return res;
             };
@@ -34,6 +57,7 @@
     }
     hookShowmsg();
     setTimeout(hookShowmsg, 1000);
+    setInterval(hookShowmsg, 2000);
 
     async function handleUploadRequest(data) {
         if (isUploadInProgress) {
@@ -100,8 +124,14 @@
             }
 
             // 6. Pastikan idreferensi2, pihak2, dan aktanoninput2 terisi
+            if (data.idreferensi) window.idreferensi2 = data.idreferensi;
+            if (data.pihak) window.pihak2 = data.pihak;
+            if (data.aktanoninput) window.aktanoninput2 = data.aktanoninput;
+            if (data.tipeunggahfile) window.tipeunggahfile2 = data.tipeunggahfile;
+
             if (!window.idreferensi2 || !window.pihak2) {
                 const pUrl =
+                    document.querySelector("#daftarpihak2placeholder p.url[data-refid]") ||
                     document.querySelector("#daftarpemohonpihaksetujuplaceholder p.url[data-refid]") ||
                     document.querySelector("#daftarpihak1placeholder p.url[data-refid]");
                 if (pUrl) {

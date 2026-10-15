@@ -38,11 +38,67 @@ PPAT.aktaFiller = (() => {
             await dom.delay(TIMING.SUBMIT_DELAY_MS);
             const submitBtn = document.querySelector(S.btnSimpan);
             if (submitBtn) {
+                console.log("[AktaFiller] Menekan tombol Simpan Akta...");
                 submitBtn.click();
+
+                // Tunggu hingga modal "Data Akta telah disimpan" muncul dan tertutup secara otomatis
+                await waitForAktaSaveModal(6000);
             }
         }
 
         return true;
+    }
+
+    /**
+     * Menunggu modal notifikasi "Data Akta telah disimpan" muncul dan memastikan modal tertutup.
+     */
+    function waitForAktaSaveModal(timeoutMs = 6000) {
+        return new Promise((resolve) => {
+            let done = false;
+
+            function finish() {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                clearInterval(poller);
+                window.removeEventListener("message", onMessage);
+                // Pastikan backdrop bersih
+                document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+                document.body.classList.remove("modal-open");
+                resolve(true);
+            }
+
+            function onMessage(e) {
+                if (e.data && e.data.type === "PPAT_SHOWMSG_EVENT" && e.data.message) {
+                    const msg = String(e.data.message).toLowerCase();
+                    if (msg.includes("telah disimpan") || msg.includes("data akta") || msg.includes("berhasil")) {
+                        console.log("[AktaFiller] Modal konfirmasi simpan akta terdeteksi via event:", e.data.message);
+                        setTimeout(finish, 250);
+                    }
+                }
+            }
+
+            window.addEventListener("message", onMessage);
+
+            const timer = setTimeout(() => {
+                console.log("[AktaFiller] Selesai menunggu modal akta (timeout).");
+                finish();
+            }, timeoutMs);
+
+            const poller = setInterval(() => {
+                const modal = document.querySelector("#globalModal, .modal.show, #myModal");
+                if (modal) {
+                    const isVisible =
+                        modal.classList.contains("show") ||
+                        modal.style.display === "block" ||
+                        (modal.offsetWidth > 0 && modal.offsetHeight > 0);
+                    if (isVisible) {
+                        console.log("[AktaFiller] Modal konfirmasi akta terdeteksi di DOM.");
+                        setTimeout(finish, 250);
+                    }
+                }
+            }, 50);
+        });
     }
 
     return { fill };

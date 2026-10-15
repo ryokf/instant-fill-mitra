@@ -14,6 +14,7 @@ use crate::services::bphtb::process_bphtb_file;
 use crate::services::sertipikat::process_sertipikat_file;
 use crate::services::pph::process_pph_file;
 use crate::services::pt_files::{self, DEFAULT_PT_DIR};
+use crate::services::pembeli_files::{self, DEFAULT_PEMBELI_DIR};
 
 pub async fn health_check() -> Response {
     (
@@ -464,3 +465,154 @@ pub async fn get_pt_file_download_handler(Query(query): Query<PtDownloadQuery>) 
         ).into_response(),
     }
 }
+
+// -----------------------------------------------------------------------------
+// Handler: Info File Pembeli / Pihak Kedua (KK & KTP)
+// -----------------------------------------------------------------------------
+#[derive(Deserialize)]
+pub struct PembeliInfoQuery {
+    pub buyer_name: String,
+    pub base_dir: Option<String>,
+}
+
+pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PEMBELI_DIR);
+    println!("[API: Pembeli Info] Mencari dokumen pihak kedua untuk: '{}' di '{}'", query.buyer_name, base_dir);
+
+    match pembeli_files::get_pembeli_info(base_dir, &query.buyer_name) {
+        Ok(info) => {
+            println!(
+                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}",
+                info.folder_name, info.kk.filename, info.ktp.filename
+            );
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "data": info,
+                    "folder": info.folder_name,
+                    "files": {
+                        "kk": info.kk.filename,
+                        "ktp": info.ktp.filename,
+                    }
+                })),
+            ).into_response()
+        }
+        Err(err) => {
+            eprintln!("[API: Pembeli Info] Gagal: {}", err);
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": err
+                })),
+            ).into_response()
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Handler: Download File Pembeli / Pihak Kedua (KK atau KTP)
+// -----------------------------------------------------------------------------
+#[derive(Deserialize)]
+pub struct PembeliDownloadQuery {
+    pub buyer_name: String,
+    pub doc_type: String, // "kk" atau "ktp"
+    pub base_dir: Option<String>,
+}
+
+pub async fn get_pembeli_file_download_handler(Query(query): Query<PembeliDownloadQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PEMBELI_DIR);
+    println!(
+        "[API: Pembeli Download] Mengambil berkas '{}' untuk pihak kedua: '{}'",
+        query.doc_type, query.buyer_name
+    );
+
+    let folder_match = match pembeli_files::find_pembeli_folder(base_dir, &query.buyer_name) {
+        Some(m) => m,
+        None => {
+            let msg = format!("Folder pihak kedua untuk '{}' tidak ditemukan di '{}'", query.buyer_name, base_dir);
+            eprintln!("[API: Pembeli Download] Gagal: {}", msg);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    let doc_match = match pembeli_files::find_pembeli_document(&folder_match.1, &query.doc_type) {
+        Some(m) => m,
+        None => {
+            let msg = format!(
+                "Berkas dokumen jenis '{}' tidak ditemukan di folder pembeli '{}'",
+                query.doc_type, folder_match.0
+            );
+            eprintln!("[API: Pembeli Download] Gagal: {}", msg);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    let (filename, filepath, _size) = doc_match;
+    let bytes = match tokio::fs::read(&filepath).await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("Gagal membaca berkas '{}': {}", filepath.display(), e);
+            eprintln!("[API: Pembeli Download] Error I/O: {}", msg);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    println!(
+        "[API: Pembeli Download] Berhasil menyajikan berkas '{}' ({} bytes)",
+        filename,
+        bytes.len()
+    );
+
+    let content_type = if filename.to_uppercase().ends_with(".PDF") {
+        "application/pdf"
+    } else if filename.to_uppercase().ends_with(".PNG") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
+
+    let builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("inline; filename=\"{}\"", filename),
+        )
+        .header("x-file-name", filename)
+        .header(
+            "access-control-expose-headers",
+            "Content-Disposition, X-File-Name",
+        );
+
+    match builder.body(Body::from(bytes)) {
+        Ok(resp) => resp,
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "error": format!("Gagal membangun respons: {}", e)
+            })),
+        ).into_response(),
+    }
+}
+

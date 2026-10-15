@@ -34,6 +34,10 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/pt-files-info", get(handlers::get_pt_files_info_handler))
         .route("/api/pt-file", get(handlers::get_pt_file_download_handler))
         .route("/api/pt-file-download", get(handlers::get_pt_file_download_handler))
+        // Pembeli Documents (KK & KTP)
+        .route("/api/pembeli-files-info", get(handlers::get_pembeli_files_info_handler))
+        .route("/api/pembeli-file", get(handlers::get_pembeli_file_download_handler))
+        .route("/api/pembeli-file-download", get(handlers::get_pembeli_file_download_handler))
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max upload
         .layer(cors);
 

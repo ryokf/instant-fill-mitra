@@ -32,6 +32,11 @@ PPAT.panel = (() => {
         setupSertipikatUpload(els);
         setupBphtbUpload(els);
         setupPphUpload(els);
+
+        // Inisialisasi pemantau otomatis submit pembeli untuk upload KK & KTP
+        if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.initPembeliWatcher === "function") {
+            PPAT.pembeliUploadFiller.initPembeliWatcher();
+        }
     }
 
     /** Memeriksa apakah opsi otomatis klik "Tambah" sedang aktif di panel. */
@@ -462,6 +467,7 @@ PPAT.panel = (() => {
             }
 
             if (results.pembeli) {
+                PPAT.activePembeliData = results.pembeli;
                 setBatchStatus("⏳ [2/4] Mengisi Data Pihak Pembeli...", "info");
                 if (PPAT.pembeliFiller) {
                     await PPAT.pembeliFiller.fill(results.pembeli, { autoSubmit: isAutoSubmit(), showAlert: false });
@@ -585,6 +591,7 @@ PPAT.panel = (() => {
             statusAkta,
             cardPembeli,
             btnFillPembeli,
+            btnUploadPembeliDocs,
             pembeliNama,
             pembeliNik,
             pembeliPekerjaan,
@@ -636,6 +643,7 @@ PPAT.panel = (() => {
 
                 if (response.ok && result.success && result.data) {
                     lastPembeliData = result.data;
+                    PPAT.activePembeliData = result.data;
                     const aktaData = result.akta || {
                         nomor_akta: result.data.nomor_akta,
                         tanggal_akta: result.data.tanggal_akta,
@@ -645,21 +653,15 @@ PPAT.panel = (() => {
 
                     // 1. Ekstrak & isi Nomor dan Tanggal Akta ke Section A (Input Akta)
                     // Setelah semua kolom di section Input Akta terisi, klik tombol simpan secara otomatis
+                    // dan tunggu modal notifikasi sampai tersimpan.
                     let aktaStatusPrefix = "";
                     if (PPAT.aktaFiller && (aktaData.nomor_akta || aktaData.tanggal_akta)) {
                         await PPAT.aktaFiller.fill(aktaData, { autoSubmit: true });
                         aktaStatusPrefix = `Akta No. ${aktaData.nomor_akta || "-"} (${aktaData.tanggal_akta || "-"}) tersimpan. `;
                     }
 
-                    // 2. Langsung otomatis isi ke form di web PPAT (khusus pembeli tidak auto-submit agar bisa direview)
-                    if (PPAT.pembeliFiller) {
-                        await PPAT.pembeliFiller.fill(result.data, {
-                            autoSubmit: false,
-                            scrollIntoView: true,
-                        });
-                    }
-
-                    setUploadStatus(`✔ ${aktaStatusPrefix}Data pembeli (${result.data.nama}) siap direview.`, "ok");
+                    // 2. Data pembeli disimpan di memori dan diabaikan dulu sampai pihak penjual & persetujuan selesai diupload
+                    setUploadStatus(`✔ ${aktaStatusPrefix}Silakan pilih pihak penjual (PT) di atas.`, "ok");
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";
                     setUploadStatus(`⚠ ${err}`, "warn");
@@ -711,6 +713,24 @@ PPAT.panel = (() => {
                         autoSubmit: false,
                         scrollIntoView: true,
                     });
+                }
+            });
+        }
+
+        // Tombol mandiri upload berkas pembeli (KK & KTP)
+        if (btnUploadPembeliDocs) {
+            btnUploadPembeliDocs.addEventListener("click", async () => {
+                const buyerName =
+                    (lastPembeliData && lastPembeliData.nama) ||
+                    (PPAT.activePembeliData && PPAT.activePembeliData.nama) ||
+                    (PPAT.pembeliUploadFiller && PPAT.pembeliUploadFiller.getActiveBuyerNameFromPage());
+
+                if (!buyerName) {
+                    return alert("Data pembeli belum tersedia. Pastikan akta PDF telah diupload atau form pembeli telah diisi.");
+                }
+
+                if (PPAT.pembeliUploadFiller) {
+                    await PPAT.pembeliUploadFiller.runAutoUploadPembeli(buyerName);
                 }
             });
         }

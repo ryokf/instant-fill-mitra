@@ -40,6 +40,7 @@
         "src/fillers/saksi-filler.js",
         "src/fillers/akta-filler.js",
         "src/fillers/pembeli-filler.js",
+        "src/fillers/pembeli-upload-filler.js",
         "src/fillers/sertipikat-filler.js",
         "src/fillers/pbb-bphtb-filler.js",
         "src/fillers/pph-filler.js",

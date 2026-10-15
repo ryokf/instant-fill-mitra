@@ -677,6 +677,17 @@ PPAT.penjualUploadFiller = (() => {
 
         // 5. Tahap 4: Tampilkan notifikasi rekapitulasi akhir
         notifyUploadResults(results, folderName);
+
+        // 6. Tahap 5: Jika data pembeli dari AJB sudah tersimpan, isi form pembeli secara otomatis
+        // (Khusus pembeli: jangan klik Tambah secara otomatis, biarkan pengguna mereview data)
+        if (PPAT.activePembeliData && PPAT.pembeliFiller) {
+            console.log("[AutoUpload] Penjual & Persetujuan tuntas. Mengisi form Pihak Pembeli secara otomatis untuk direview...", PPAT.activePembeliData);
+            await dom.delay(500);
+            await PPAT.pembeliFiller.fill(PPAT.activePembeliData, {
+                autoSubmit: false,
+                scrollIntoView: true,
+            });
+        }
     }
 
     /**
@@ -750,5 +761,9 @@ PPAT.penjualUploadFiller = (() => {
         getActivePtNameFromPage,
         fetchPtInfo,
         downloadDocument,
+        waitForGlobalModal,
+        dismissModalAndEnsureClosed,
+        forceCleanupModalDom,
+        waitForSidebarReady,
     };
 })();
