@@ -9,7 +9,8 @@ const TOGGLE_PANEL_ACTION = "toggleAutoFillPanel";
  * manual selalu sama dengan injeksi otomatis (satu sumber kebenaran).
  */
 function getContentScriptConfig() {
-    return chrome.runtime.getManifest().content_scripts[0];
+    const scripts = chrome.runtime.getManifest().content_scripts || [];
+    return scripts.find((s) => s.world !== "MAIN") || scripts[0];
 }
 
 /** Menginjeksi ulang content script + CSS ke tab (dipakai jika script belum termuat). */

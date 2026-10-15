@@ -6,7 +6,30 @@
 (function () {
     console.log("[AutoFill PPAT] Page Bridge (Main World) diinisialisasi.");
 
+    let isUploadInProgress = false;
+
+    // Hook window.showmsg untuk memastikan backdrop ganda tidak pernah menumpuk
+    function hookShowmsg() {
+        const originalShowmsg = window.showmsg;
+        if (typeof originalShowmsg === "function" && !window.__ppat_showmsg_hooked) {
+            window.__ppat_showmsg_hooked = true;
+            window.showmsg = function (judul, isi) {
+                // Bersihkan backdrop lama jika ada sebelum membuka modal baru
+                document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+                return originalShowmsg.apply(this, arguments);
+            };
+        }
+    }
+    hookShowmsg();
+    setTimeout(hookShowmsg, 1000);
+
     async function handleUploadRequest(data) {
+        if (isUploadInProgress) {
+            console.warn("[PageBridge] Upload request diabaikan karena proses upload sedang berjalan.");
+            return;
+        }
+        isUploadInProgress = true;
+
         const { base64, filename, mimeType, tipeValue } = data || {};
         console.log(`[PageBridge] Menerima berkas upload: ${filename} (tipe: ${tipeValue})`);
 
@@ -104,44 +127,81 @@
         } catch (err) {
             console.error("[PageBridge] Gagal memproses upload berkas:", err);
             sendResponse({ success: false, error: err.message || String(err) });
+        } finally {
+            isUploadInProgress = false;
         }
     }
 
     function sendResponse(detail) {
         window.postMessage({ type: "PPAT_INJECT_AND_UPLOAD_RESPONSE", ...detail }, "*");
-        window.dispatchEvent(new CustomEvent("PPAT_INJECT_AND_UPLOAD_RESPONSE", { detail }));
     }
 
-    // Listener via window.postMessage
-    window.addEventListener("message", (e) => {
-        if (!e.data || e.data.type !== "PPAT_INJECT_AND_UPLOAD") return;
-        handleUploadRequest(e.data);
-    });
+    /**
+     * Menekan tombol OK pada modal yang aktif dan menutup modal di Main World.
+     * Sesuai instruksi: SELALU TEKAN TOMBOL OK JIKA ADA MODAL SEPERTI ITU.
+     */
+    function pressModalOkButton() {
+        console.log("[PageBridge] Mencari modal aktif untuk menekan tombol OK...");
+        const modalEl = document.getElementById("globalModal") || document.querySelector(".modal.show, #myModal");
+        let clicked = false;
 
-    // Listener via CustomEvent
-    window.addEventListener("PPAT_INJECT_AND_UPLOAD", (e) => {
-        handleUploadRequest(e.detail);
-    });
+        if (modalEl) {
+            const buttons = Array.from(modalEl.querySelectorAll("button, a.btn"));
+            const okBtn =
+                buttons.find((b) => (b.innerText || b.textContent || "").trim().toUpperCase() === "OK") ||
+                modalEl.querySelector("button.btn-primary, button[data-bs-dismiss='modal'], button[data-dismiss='modal'], #btn-ok") ||
+                buttons[0];
 
-    // Listener dismiss modal
-    const dismissModalHandler = () => {
-        try {
-            const modalEl = document.getElementById("globalModal");
-            if (modalEl) {
-                if (window.bootstrap && window.bootstrap.Modal) {
-                    const modal = window.bootstrap.Modal.getInstance(modalEl);
-                    if (modal) modal.hide();
+            if (okBtn) {
+                console.log("[PageBridge] Menekan tombol OK (biru) pada modal:", okBtn);
+                try {
+                    okBtn.focus();
+                    okBtn.click();
+                    clicked = true;
+                } catch (e) {
+                    console.warn("[PageBridge] Gagal menekan okBtn:", e);
                 }
-                const okBtn = modalEl.querySelector("button[data-bs-dismiss='modal'], button");
-                if (okBtn) okBtn.click();
             }
-        } catch (e) {
-            console.warn("[PageBridge] Dismiss modal error:", e);
-        }
-    };
 
+            // Panggil API Bootstrap modal hide jika tersedia
+            try {
+                if (window.bootstrap && window.bootstrap.Modal) {
+                    const inst = window.bootstrap.Modal.getInstance(modalEl);
+                    if (inst) inst.hide();
+                }
+            } catch (_) {}
+
+            // Bersihkan backdrop ganda secara tuntas setelah jeda animasi
+            setTimeout(() => {
+                cleanupBackdropAndModal(modalEl);
+            }, 300);
+        }
+
+        window.postMessage({ type: "PPAT_DISMISS_MODAL_RESPONSE", success: clicked }, "*");
+        return clicked;
+    }
+
+    function cleanupBackdropAndModal(modalEl) {
+        const el = modalEl || document.getElementById("globalModal");
+        if (el) {
+            el.classList.remove("show");
+            el.style.display = "none";
+            el.setAttribute("aria-hidden", "true");
+            el.removeAttribute("aria-modal");
+        }
+        document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+        document.body.classList.remove("modal-open");
+        document.body.style.removeProperty("overflow");
+        document.body.style.removeProperty("padding-right");
+    }
+
+    // Satu-satunya listener message channel
     window.addEventListener("message", (e) => {
-        if (e.data && e.data.type === "PPAT_DISMISS_MODAL") dismissModalHandler();
+        if (!e.data || typeof e.data !== "object") return;
+        if (e.data.type === "PPAT_INJECT_AND_UPLOAD") {
+            handleUploadRequest(e.data);
+        } else if (e.data.type === "PPAT_DISMISS_MODAL") {
+            pressModalOkButton();
+        }
     });
-    window.addEventListener("PPAT_DISMISS_MODAL", dismissModalHandler);
 })();

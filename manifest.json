@@ -25,12 +25,6 @@
   "content_scripts": [
     {
       "matches": ["https://ppat.atrbpn.go.id/*"],
-      "world": "MAIN",
-      "js": ["src/content/page-bridge.js"],
-      "run_at": "document_start"
-    },
-    {
-      "matches": ["https://ppat.atrbpn.go.id/*"],
       "css": ["src/ui/panel.css"],
       "js": [
         "src/core/namespace.js",
@@ -55,6 +49,12 @@
         "src/content/main.js"
       ],
       "run_at": "document_end"
+    },
+    {
+      "matches": ["https://ppat.atrbpn.go.id/*"],
+      "world": "MAIN",
+      "js": ["src/content/page-bridge.js"],
+      "run_at": "document_start"
     }
   ],
   "action": {

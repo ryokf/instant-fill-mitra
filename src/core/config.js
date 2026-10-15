@@ -76,8 +76,7 @@ PPAT.config = Object.freeze({
             divSideNav: "#divsidenavupload2",
             modal: "#globalModal",
             modalTitle: "#globalModalTitle",
-            modalBody: "#globalModalBody",
-            modalBtnOk: "#globalModal button[data-bs-dismiss='modal'], #globalModal button",
+            modalBtnOk: "#globalModal button.btn-primary, #globalModal button[data-bs-dismiss='modal'], #globalModal button, #myModal #btn-ok, #myModal button",
         }),
 
         persetujuan: Object.freeze({

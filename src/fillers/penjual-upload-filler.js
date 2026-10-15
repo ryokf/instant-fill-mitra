@@ -120,27 +120,94 @@ PPAT.penjualUploadFiller = (() => {
     }
 
     /**
-     * Menutup modal notifikasi (#globalModal) dengan menekan tombol OK atau memicu Bootstrap modal hide.
+     * Memeriksa apakah ada modal notifikasi (#globalModal, #myModal, dll) atau backdrop-nya sedang aktif di layar.
      */
-    async function dismissGlobalModal() {
-        dom.runInPageContext(() => {
-            const modalEl = document.getElementById("globalModal");
-            if (modalEl) {
-                if (window.bootstrap && window.bootstrap.Modal) {
-                    const modal = window.bootstrap.Modal.getInstance(modalEl);
-                    if (modal) modal.hide();
-                }
-                const okBtn = modalEl.querySelector("button[data-bs-dismiss='modal'], button");
-                if (okBtn) okBtn.click();
-            }
-        });
+    function isModalOpen() {
+        const modal = document.querySelector("#globalModal, #myModal, .modal.show, .modal[style*='display: block']");
+        const hasBackdrop = document.querySelector(".modal-backdrop") !== null;
+        if (!modal && !hasBackdrop) return false;
 
-        const okBtn = document.querySelector(S.modalBtnOk);
-        if (okBtn) okBtn.click();
+        if (modal) {
+            const isVisible =
+                modal.classList.contains("show") ||
+                modal.style.display === "block" ||
+                (modal.offsetWidth > 0 && modal.offsetHeight > 0);
+            if (isVisible) return true;
+        }
 
-        // Beri waktu animasi modal selesai menutup
-        await dom.delay(600);
+        return hasBackdrop;
     }
+
+    /**
+     * Menekan tombol OK berwarna biru pada modal yang muncul dan menunggu hingga modal tertutup sepenuhnya.
+     * Sesuai instruksi: SELALU TEKAN TOMBOL OK JIKA ADA MODAL SEPERTI ITU SEBELUM KLIK UNGGAH LAGI.
+     * @param {number} maxWaitMs Waktu maksimal menunggu modal tertutup
+     */
+    async function dismissModalAndEnsureClosed(maxWaitMs = 5000) {
+        if (!isModalOpen()) {
+            return;
+        }
+
+        console.log("[AutoUpload] Modal aktif terdeteksi. Menekan tombol OK berwarna biru...");
+
+        // Beri jeda kecil agar modal selesai muncul di layar
+        await dom.delay(300);
+
+        // 1. Cari tombol OK di DOM dan klik langsung (prioritaskan tombol biru / teks OK)
+        const modal = document.querySelector("#globalModal, #myModal, .modal.show, .modal[style*='display: block']");
+        if (modal) {
+            const buttons = Array.from(modal.querySelectorAll("button, a.btn"));
+            const okBtn =
+                buttons.find((b) => (b.innerText || b.textContent || "").trim().toUpperCase() === "OK") ||
+                modal.querySelector("button.btn-primary, button[data-bs-dismiss='modal'], button[data-dismiss='modal'], #btn-ok") ||
+                buttons[0];
+
+            if (okBtn) {
+                console.log("[AutoUpload] Menekan tombol OK pada modal di DOM:", okBtn);
+                try {
+                    okBtn.focus();
+                    okBtn.click();
+                } catch (e) {
+                    console.warn("[AutoUpload] Gagal klik okBtn di content script:", e);
+                }
+            }
+        }
+
+        // 2. Kirim sinyal ke Page Bridge (Main World) untuk menekan tombol OK & memanggil Bootstrap hide
+        window.postMessage({ type: "PPAT_DISMISS_MODAL" }, "*");
+
+        // 3. Tunggu hingga modal tertutup
+        const startTime = Date.now();
+        while (Date.now() - startTime < maxWaitMs) {
+            if (!isModalOpen()) {
+                console.log("[AutoUpload] Modal berhasil tertutup sepenuhnya.");
+                break;
+            }
+            await dom.delay(200);
+
+            // Jika setelah 1.2 detik masih belum hilang, bersihkan paksa backdrop & class modal-open
+            if (Date.now() - startTime > 1200) {
+                console.log("[AutoUpload] Membersihkan paksa modal dan backdrop...");
+                const openModals = document.querySelectorAll("#globalModal, #myModal, .modal.show");
+                openModals.forEach((m) => {
+                    m.classList.remove("show");
+                    m.style.display = "none";
+                    m.setAttribute("aria-hidden", "true");
+                    m.removeAttribute("aria-modal");
+                });
+                document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+                document.body.classList.remove("modal-open");
+                document.body.style.removeProperty("overflow");
+                document.body.style.removeProperty("padding-right");
+                break;
+            }
+        }
+
+        // Jeda penenang ekstra agar halaman stabil sebelum tindakan berikutnya
+        await dom.delay(400);
+    }
+
+    const dismissGlobalModal = dismissModalAndEnsureClosed;
 
     /**
      * Mengirimkan file ke Page Bridge (Main World) untuk diset ke window.dfupload2
@@ -153,31 +220,19 @@ PPAT.penjualUploadFiller = (() => {
                 resolve({ success: false, error: "Timeout komunikasi dengan Page Bridge (Main World)." });
             }, 10000);
 
-            function onResponse(data) {
-                cleanup();
-                resolve(data);
-            }
-
             function messageHandler(e) {
                 if (e.data && e.data.type === "PPAT_INJECT_AND_UPLOAD_RESPONSE") {
-                    onResponse(e.data);
-                }
-            }
-
-            function customEventHandler(e) {
-                if (e.detail) {
-                    onResponse(e.detail);
+                    cleanup();
+                    resolve(e.data);
                 }
             }
 
             function cleanup() {
                 clearTimeout(timeout);
                 window.removeEventListener("message", messageHandler);
-                window.removeEventListener("PPAT_INJECT_AND_UPLOAD_RESPONSE", customEventHandler);
             }
 
             window.addEventListener("message", messageHandler);
-            window.addEventListener("PPAT_INJECT_AND_UPLOAD_RESPONSE", customEventHandler);
 
             const payload = {
                 type: "PPAT_INJECT_AND_UPLOAD",
@@ -188,7 +243,6 @@ PPAT.penjualUploadFiller = (() => {
             };
 
             window.postMessage(payload, "*");
-            window.dispatchEvent(new CustomEvent("PPAT_INJECT_AND_UPLOAD", { detail: payload }));
         });
     }
 
@@ -204,11 +258,17 @@ PPAT.penjualUploadFiller = (() => {
      */
     async function executeUploadStep(ptName, docType, filename, preferredOptionValue) {
         try {
+            // 0. SEBELUM MULAI: Pastikan modal apapun yang ada sudah ditutup dengan menekan tombol OK
+            if (isModalOpen()) {
+                console.log("[AutoUpload] Ditemukan modal sebelum proses upload, menekan OK terlebih dahulu...");
+                await dismissModalAndEnsureClosed();
+            }
+
             console.log(`[AutoUpload] Mengunduh berkas ${docType} ('${filename}') dari backend...`);
             const { base64 } = await downloadDocument(ptName, docType);
 
             console.log(`[AutoUpload] Mencari tombol Unggah pada daftar Penjual...`);
-            const btnUnggah = document.querySelector(S.btnUnggah);
+            const btnUnggah = await dom.waitForElement(S.btnUnggah, 6000);
             if (!btnUnggah) {
                 return {
                     success: false,
@@ -216,7 +276,13 @@ PPAT.penjualUploadFiller = (() => {
                 };
             }
 
+            // Pastikan sekali lagi modal tertutup sebelum mengklik tombol Unggah
+            if (isModalOpen()) {
+                await dismissModalAndEnsureClosed();
+            }
+
             // Klik tombol Unggah untuk membuka sidebar
+            console.log(`[AutoUpload] Mengklik tombol Unggah...`);
             btnUnggah.click();
 
             console.log(`[AutoUpload] Menunggu sidebar upload terbuka...`);
@@ -269,6 +335,9 @@ PPAT.penjualUploadFiller = (() => {
             console.log(`[AutoUpload] Menunggu konfirmasi upload dari website ATR/BPN...`);
             const modalMsg = await waitForGlobalModal();
             if (!modalMsg) {
+                if (isModalOpen()) {
+                    await dismissModalAndEnsureClosed();
+                }
                 return {
                     success: false,
                     error: "Waktu tunggu habis (timeout) saat menunggu konfirmasi upload dokumen dari website ATR/BPN.",
@@ -277,16 +346,19 @@ PPAT.penjualUploadFiller = (() => {
 
             console.log(`[AutoUpload] Pesan dari website ATR/BPN: "${modalMsg}"`);
 
+            // SELALU TEKAN TOMBOL OK JIKA ADA MODAL SEPERTI ITU
+            console.log(`[AutoUpload] Menekan tombol OK pada modal "${modalMsg}"...`);
+            await dismissModalAndEnsureClosed();
+
             if (modalMsg.toLowerCase().includes("data telah diunggah")) {
-                // Berhasil! Tutup modal
-                await dismissGlobalModal();
                 return { success: true };
             } else {
-                // Ada pesan error atau peringatan lain dari server ATR/BPN
-                await dismissGlobalModal();
                 return { success: false, error: modalMsg };
             }
         } catch (err) {
+            if (isModalOpen()) {
+                await dismissModalAndEnsureClosed();
+            }
             return { success: false, error: err.message || String(err) };
         }
     }
@@ -342,6 +414,9 @@ PPAT.penjualUploadFiller = (() => {
             }
         }
 
+        // SEBELUM MULAI TAHAP 2: PASTIKAN TOMBOL OK PADA MODAL SUDAH DITEKAN & MODAL SUDAH HILANG
+        await dismissModalAndEnsureClosed();
+
         // Jeda sejenak sebelum langkah kedua
         await dom.delay(800);
 
@@ -356,6 +431,9 @@ PPAT.penjualUploadFiller = (() => {
                 results.npwp.error = resNpwp.error;
             }
         }
+
+        // PASTIKAN MODAL SETELAH TAHAP 2 JUGA DITUTUP DENGAN TEKAN TOMBOL OK
+        await dismissModalAndEnsureClosed();
 
         // 4. Tahap 3: Notifikasi hasil akhir
         notifyUploadResults(results, folderName);
