@@ -12,15 +12,16 @@ untuk mengisi otomatis form Penjual (Badan Hukum), Pihak Pembeli (via OCR Akta P
 │ Manifest V3 Content Script    │  HTTP / Multipart│ - POST /api/extract-pembeli     │
 │ - Floating Panel UI           │ ────────────────►│ - POST /api/extract-bphtb       │
 │ - DOM Helpers & Page Context  │ ◄────────────────│ - POST /api/extract-sertipikat   │
-│ - Form Fillers                │   JSON Response  │ - POST /api/extract-pph         │
-└───────────────────────────────┘                  └─────────────────────────────────┘
-                │
-                ▼
+│ - Form Fillers & Auto Upload  │   JSON Response  │ - POST /api/extract-pph         │
+└───────────────────────────────┘                  │ - GET  /api/pt-files-info       │
+                │                                  │ - GET  /api/pt-file (Akta & NPWP)
+                ▼                                  └─────────────────────────────────┘
   [ Pengisian Form ATR/BPN Berurutan ]
-  1. Sertipikat Elektronik (NIB & Kode Blangko)
-  2. Akta & Pihak Pembeli (AJB)
-  3. PBB (tunggu ZNT & simpan) -> Lanjut BPHTB (No. Bukti)
-  4. PPh (Suket & NPWP -> Validasi & Upload)
+  1. Penjual (Badan Hukum) -> Auto Upload Akta Pendirian & NPWP Penjual
+  2. Sertipikat Elektronik (NIB & Kode Blangko)
+  3. Akta & Pihak Pembeli (AJB)
+  4. PBB (tunggu ZNT & simpan) -> Lanjut BPHTB (No. Bukti)
+  5. PPh (Suket & NPWP -> Validasi & Upload)
 ```
 
 1. **Backend Terpadu (Port 3001)**: Keempat layanan backend (Pembeli, BPHTB, Sertipikat, PPh) disatukan dalam satu binary Rust berkecepatan tinggi berbasis Tokio dan Windows Native WinRT OCR (`Windows.Media.Ocr`).

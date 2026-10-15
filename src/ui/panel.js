@@ -40,6 +40,12 @@ PPAT.panel = (() => {
         return chk ? chk.checked : true;
     }
 
+    /** Memeriksa apakah opsi otomatis upload dokumen PT sedang aktif di panel. */
+    function isAutoUploadPtDocs() {
+        const chk = document.getElementById(panelTemplate.IDS.chkAutoUploadPtDocs);
+        return chk ? chk.checked : true;
+    }
+
     // -------------------------------------------------------------------------
     // Visibilitas panel (buka / minimize / toggle dari ikon toolbar)
     // -------------------------------------------------------------------------
@@ -102,17 +108,43 @@ PPAT.panel = (() => {
             renderPersetujuanList(listPersetujuan, ptKey);
             // Saat user memilih PT di dropdown, langsung isi form dan klik "Tambah"
             if (ptKey && PPAT.ptDatabase[ptKey]) {
-                PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual, { autoSubmit: isAutoSubmit() });
+                PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual, {
+                    autoSubmit: isAutoSubmit(),
+                    autoUploadDocs: isAutoUploadPtDocs(),
+                });
             }
         });
     }
 
-    function setupFillPenjualButton({ selectPt, btnFillPenjual }) {
+    function setupFillPenjualButton({ selectPt, btnFillPenjual, btnUploadPtDocs }) {
         btnFillPenjual.addEventListener("click", () => {
             const ptKey = selectPt.value;
             if (!ptKey) return alert(MESSAGES.selectPtFirst);
-            PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual, { autoSubmit: isAutoSubmit() });
+            PPAT.penjualFiller.fill(PPAT.ptDatabase[ptKey].penjual, {
+                autoSubmit: isAutoSubmit(),
+                autoUploadDocs: isAutoUploadPtDocs(),
+            });
         });
+
+        if (btnUploadPtDocs) {
+            btnUploadPtDocs.addEventListener("click", async () => {
+                const ptKey = selectPt.value;
+                const ptName =
+                    ptKey && PPAT.ptDatabase[ptKey]
+                        ? PPAT.ptDatabase[ptKey].penjual.nama
+                        : PPAT.penjualUploadFiller
+                        ? PPAT.penjualUploadFiller.getActivePtNameFromPage()
+                        : null;
+
+                if (!ptName) {
+                    return alert("Pilih PT di dropdown atau pastikan data PT sudah tersimpan di baris penjual halaman web.");
+                }
+
+                if (PPAT.penjualUploadFiller) {
+                    await PPAT.penjualUploadFiller.runAutoUpload(ptName);
+                }
+            });
+        }
     }
 
     // -------------------------------------------------------------------------

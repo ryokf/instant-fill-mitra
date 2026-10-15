@@ -48,6 +48,16 @@ PPAT.penjualFiller = (() => {
             const submitBtn = document.querySelector(S.btnTambah);
             if (submitBtn) {
                 submitBtn.click();
+
+                const autoUploadDocs = options.autoUploadDocs ?? true;
+                if (autoUploadDocs && PPAT.penjualUploadFiller) {
+                    console.log("[PenjualFiller] Menunggu tombol Unggah muncul di daftar penjual...");
+                    const btnUnggah = await dom.waitForElement(config.SELECTORS.penjualUpload.btnUnggah, 10000);
+                    if (btnUnggah) {
+                        await dom.delay(600);
+                        await PPAT.penjualUploadFiller.runAutoUpload(data.nama);
+                    }
+                }
             }
         } else {
             alert(MESSAGES.penjualFilled);

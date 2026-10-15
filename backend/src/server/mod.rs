@@ -30,6 +30,10 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         // PPh
         .route("/api/extract-pph", post(handlers::extract_pph_handler))
         .route("/api/pph", post(handlers::extract_pph_handler))
+        // PT Documents (Akta Pendirian & NPWP)
+        .route("/api/pt-files-info", get(handlers::get_pt_files_info_handler))
+        .route("/api/pt-file", get(handlers::get_pt_file_download_handler))
+        .route("/api/pt-file-download", get(handlers::get_pt_file_download_handler))
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max upload
         .layer(cors);
 
@@ -44,6 +48,7 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     println!("  2. PBB & BPHTB    : POST /api/extract-bphtb         ");
     println!("  3. Sertipikat     : POST /api/extract-sertipikat     ");
     println!("  4. Bukti PPh      : POST /api/extract-pph           ");
+    println!("  5. PT Dokumen     : GET  /api/pt-file (Akta & NPWP) ");
     println!("=======================================================");
 
     axum::serve(listener, app).await?;

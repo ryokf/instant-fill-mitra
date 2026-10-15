@@ -1,16 +1,19 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use axum::{
-    extract::Multipart,
-    http::StatusCode,
+    body::Body,
+    extract::{Multipart, Query},
+    http::{header, StatusCode},
     response::{IntoResponse, Json, Response},
 };
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::services::pembeli::process_akta_pdf;
 use crate::services::bphtb::process_bphtb_file;
 use crate::services::sertipikat::process_sertipikat_file;
 use crate::services::pph::process_pph_file;
+use crate::services::pt_files::{self, DEFAULT_PT_DIR};
 
 pub async fn health_check() -> Response {
     (
@@ -312,5 +315,150 @@ pub async fn extract_pph_handler(multipart: Multipart) -> Response {
                 })),
             ).into_response()
         }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Handler: Info File PT (Akta Pendirian & NPWP)
+// -----------------------------------------------------------------------------
+#[derive(Deserialize)]
+pub struct PtInfoQuery {
+    pub pt_name: String,
+    pub base_dir: Option<String>,
+}
+
+pub async fn get_pt_files_info_handler(Query(query): Query<PtInfoQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PT_DIR);
+    println!("[API: PT Info] Mencari info dokumen untuk PT: '{}' di '{}'", query.pt_name, base_dir);
+
+    match pt_files::get_pt_info(base_dir, &query.pt_name) {
+        Ok(info) => {
+            println!(
+                "[API: PT Info] Berhasil - Folder: {}, Akta: {:?}, NPWP: {:?}",
+                info.folder_name, info.akta.filename, info.npwp.filename
+            );
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "data": info
+                })),
+            ).into_response()
+        }
+        Err(err) => {
+            eprintln!("[API: PT Info] Gagal: {}", err);
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": err
+                })),
+            ).into_response()
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Handler: Download File PT (Akta Pendirian atau NPWP)
+// -----------------------------------------------------------------------------
+#[derive(Deserialize)]
+pub struct PtDownloadQuery {
+    pub pt_name: String,
+    pub doc_type: String,
+    pub base_dir: Option<String>,
+}
+
+pub async fn get_pt_file_download_handler(Query(query): Query<PtDownloadQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PT_DIR);
+    println!(
+        "[API: PT Download] Mengambil berkas jenis '{}' untuk PT: '{}'",
+        query.doc_type, query.pt_name
+    );
+
+    let pt_match = match pt_files::find_pt_folder(base_dir, &query.pt_name) {
+        Some(m) => m,
+        None => {
+            let msg = format!("Folder PT untuk '{}' tidak ditemukan di '{}'", query.pt_name, base_dir);
+            eprintln!("[API: PT Download] Gagal: {}", msg);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    let doc_match = match pt_files::find_pt_document(&pt_match.1, &query.doc_type) {
+        Some(m) => m,
+        None => {
+            let msg = format!(
+                "Berkas dokumen jenis '{}' tidak ditemukan di folder PT '{}'",
+                query.doc_type, pt_match.0
+            );
+            eprintln!("[API: PT Download] Gagal: {}", msg);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    let (filename, filepath, _size) = doc_match;
+    let bytes = match tokio::fs::read(&filepath).await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("Gagal membaca berkas '{}': {}", filepath.display(), e);
+            eprintln!("[API: PT Download] Error I/O: {}", msg);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    println!(
+        "[API: PT Download] Berhasil menyajikan berkas '{}' ({} bytes)",
+        filename,
+        bytes.len()
+    );
+
+    let content_type = if filename.to_uppercase().ends_with(".PDF") {
+        "application/pdf"
+    } else if filename.to_uppercase().ends_with(".PNG") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
+
+    let builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("inline; filename=\"{}\"", filename),
+        )
+        .header("x-file-name", filename)
+        .header(
+            "access-control-expose-headers",
+            "Content-Disposition, X-File-Name",
+        );
+
+    match builder.body(Body::from(bytes)) {
+        Ok(resp) => resp,
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "error": format!("Gagal membangun respons: {}", e)
+            })),
+        ).into_response(),
     }
 }

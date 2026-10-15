@@ -13,7 +13,9 @@ PPAT.panelTemplate = (() => {
         btnRedetect: "ppat-btn-redetect",
         selectPt: "ppat-select-pt",
         btnFillPenjual: "ppat-btn-fill-penjual",
+        btnUploadPtDocs: "ppat-btn-upload-ptdocs",
         chkAutoSubmit: "ppat-chk-autosubmit",
+        chkAutoUploadPtDocs: "ppat-chk-autoupload-ptdocs",
         listPersetujuan: "ppat-list-persetujuan",
         listSaksi: "ppat-list-saksi",
         dropzoneBatch: "ppat-dropzone-batch",
@@ -79,11 +81,17 @@ PPAT.panelTemplate = (() => {
                     <a id="${IDS.btnRedetect}" class="ppat-btn-link" title="Deteksi ulang dari web">Cek Ulang</a>
                 </div>
 
-                <!-- Opsi otomatis klik tombol tambah -->
+                <!-- Opsi otomatis klik tombol tambah & upload dokumen -->
                 <div class="ppat-auto-submit-row">
                     <label class="ppat-auto-submit-label">
                         <input type="checkbox" id="${IDS.chkAutoSubmit}" checked>
                         <span>Otomatis klik tombol <b>"Tambah"</b> di web</span>
+                    </label>
+                </div>
+                <div class="ppat-auto-submit-row" style="margin-top: 4px;">
+                    <label class="ppat-auto-submit-label">
+                        <input type="checkbox" id="${IDS.chkAutoUploadPtDocs}" checked>
+                        <span>Otomatis <b>Upload Dokumen PT</b> (Akta & NPWP)</span>
                     </label>
                 </div>
 
@@ -101,6 +109,9 @@ PPAT.panelTemplate = (() => {
                             <option value="">-- Pilih PT --</option>
                         </select>
                         <button id="${IDS.btnFillPenjual}" class="ppat-btn-fill">Isi Form Penjual</button>
+                        <button id="${IDS.btnUploadPtDocs}" class="ppat-btn-action" style="margin-top: 6px; background: #059669; color: #fff; width: 100%; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;" title="Upload Akta Pendirian & NPWP ke website ATR/BPN">
+                            📤 Upload Dokumen PT (Akta & NPWP)
+                        </button>
                     </div>
                 </div>
 

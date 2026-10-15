@@ -7,6 +7,8 @@ PPAT.config = Object.freeze({
     BPHTB_BACKEND_URL: "http://127.0.0.1:3001/api/extract-bphtb",
     SERTIPIKAT_BACKEND_URL: "http://127.0.0.1:3001/api/extract-sertipikat",
     PPH_BACKEND_URL: "http://127.0.0.1:3001/api/extract-pph",
+    PT_FILE_INFO_URL: "http://127.0.0.1:3001/api/pt-files-info",
+    PT_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pt-file",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -21,6 +23,8 @@ PPAT.config = Object.freeze({
         BPHTB_FORM_TIMEOUT_MS: 8000,
         PPH_FORM_TIMEOUT_MS: 8000,
         ZNT_WAIT_TIMEOUT_MS: 10000,
+        UPLOAD_TIMEOUT_MS: 30000,
+        SIDEBAR_TIMEOUT_MS: 15000,
         FORM_SETTLE_DELAY_MS: 300, // jeda agar form hasil AJAX selesai dirender
         SUBMIT_DELAY_MS: 250, // jeda setelah input terisi sebelum menekan Tambah
         DETECT_INTERVAL_MS: 2500, // pengecekan berkala daftar penjual di web
@@ -61,6 +65,19 @@ PPAT.config = Object.freeze({
                 ["#frmInput1BadanHukum #tIDENTITAS", "akta"],
                 ["#frmInput1BadanHukum #tPENDIRIAN", "tgl_akta"],
             ],
+        }),
+
+        penjualUpload: Object.freeze({
+            btnUnggah: "#daftarpihak1placeholder a[onclick*='unggahpihakakta']",
+            selectTipeUnggah: "#tipeunggah2",
+            inputFile: "#txtUploadFileNonInputupload2",
+            btnSimpanUpload: "#divnewdokumenupload2 button[onclick*='simpandokumenupload2']",
+            divNewDokumen: "#divnewdokumenupload2",
+            divSideNav: "#divsidenavupload2",
+            modal: "#globalModal",
+            modalTitle: "#globalModalTitle",
+            modalBody: "#globalModalBody",
+            modalBtnOk: "#globalModal button[data-bs-dismiss='modal'], #globalModal button",
         }),
 
         persetujuan: Object.freeze({
