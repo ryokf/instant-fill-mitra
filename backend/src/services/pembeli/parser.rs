@@ -7,6 +7,29 @@ pub struct AktaInfo {
     pub tanggal_akta: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct PeroranganInfo {
+    pub nik: String,
+    pub nama: String,
+    pub alamat: String,
+    pub tempat_lahir: String,
+    pub tgl_lahir: String,
+    pub jenis_kelamin: String,
+    pub pekerjaan: String,
+    pub tipe_bukti: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct PenjualOutput {
+    pub is_pt: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pt_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub penjual_perorangan: Option<PeroranganInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub persetujuan: Option<PeroranganInfo>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyerJsonOutput {
     pub id: String,
@@ -314,17 +337,10 @@ pub fn parse_akta_tanggal(p2_lines: &[String]) -> String {
 }
 
 pub fn parse_indonesian_date(text: &str) -> Option<String> {
-    let re_day = Regex::new(r"(?i)tanggal\s+(\d{1,2})").unwrap();
+    let lower = text.to_lowercase();
     let re_year = Regex::new(r"(?i)(?:tahun\s+)?\b(19\d{2}|20\d{2})\b").unwrap();
-
-    let day = re_day.captures(text).map(|c| {
-        let d: u32 = c[1].parse().unwrap_or(1);
-        format!("{:02}", d)
-    })?;
-
     let year = re_year.captures(text).map(|c| c[1].to_string())?;
 
-    let lower = text.to_lowercase();
     let month = if lower.contains("januari") {
         "01"
     } else if lower.contains("februari") {
@@ -353,7 +369,242 @@ pub fn parse_indonesian_date(text: &str) -> Option<String> {
         return None;
     };
 
+    let re_day = Regex::new(r"(?i)(?:tanggal|tanggai|tangga1|tgl)\s*[:\s]*(\d{1,2})").unwrap();
+    let day = if let Some(c) = re_day.captures(text) {
+        let d: u32 = c[1].parse().unwrap_or(1);
+        format!("{:02}", d)
+    } else if let Some(d) = parse_indonesian_day_word(text) {
+        format!("{:02}", d)
+    } else {
+        return None;
+    };
+
     Some(format!("{}/{}/{}", day, month, year))
+}
+
+pub fn determine_gender(text: &str, nik: &str) -> String {
+    let lower = text.to_lowercase();
+    if lower.contains("nyonya") || lower.contains("ny.") || lower.contains("nona") || lower.contains("nn.") || lower.contains("sdri") {
+        return "Perempuan".to_string();
+    }
+    if lower.contains("tuan") || lower.contains("tn.") || lower.contains("saudara") || lower.contains("sdr.") {
+        return "Laki-laki".to_string();
+    }
+    // Cek NIK: digit 7-8 adalah tanggal lahir, wanita ditambah 40 (41-71)
+    if nik.len() == 16 {
+        if let Ok(d) = nik[6..8].parse::<u32>() {
+            if d > 40 {
+                return "Perempuan".to_string();
+            } else {
+                return "Laki-laki".to_string();
+            }
+        }
+    }
+    "Laki-laki".to_string()
+}
+
+pub fn extract_nik_from_text(text: &str) -> String {
+    let re_nik = Regex::new(r"\b(\d{16})\b").unwrap();
+    if let Some(c) = re_nik.captures(text) {
+        return c[1].to_string();
+    }
+    let re_nik_spaced = Regex::new(r"(?i)(?:nik|kependudukan)[\s\:\-\.]*(\d[\d\s\-]{14,22}\d)").unwrap();
+    if let Some(c) = re_nik_spaced.captures(text) {
+        let digits: String = c[1].chars().filter(|ch| ch.is_ascii_digit()).collect();
+        if digits.len() == 16 {
+            return digits;
+        }
+    }
+    String::new()
+}
+
+pub fn extract_name_from_person_text(text: &str) -> String {
+    let nama_re = Regex::new(
+        r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?(?:penghadap\s+)?(?:Tuan|Nyonya|Nona|Tn\.|Ny\.|Saudara|Sdri\.)\s+([A-Za-z\s\.\,\'\`]+?)(?:,|\s+Warga|\s+lahir|\s+pemegang|\s+bertempat)"
+    ).unwrap();
+
+    if let Some(caps) = nama_re.captures(text) {
+        let mut raw_name = caps[1].trim().to_string();
+        raw_name = raw_name.trim_matches(|c: char| c == ',' || c == '.' || c == '-' || c == '_').trim().to_string();
+        return raw_name;
+    }
+
+    let fallback_nama = Regex::new(r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?(?:penghadap\s+)?([A-Z\s]{4,35})(?:,|\s+Warga)").unwrap();
+    if let Some(caps) = fallback_nama.captures(text) {
+        return caps[1].trim().to_string();
+    }
+
+    String::new()
+}
+
+pub fn extract_birth_place(text: &str) -> String {
+    let re = Regex::new(r"(?i)lahir\s+di\s+([^,]+)").unwrap();
+    re.captures(text)
+        .map(|c| c[1].trim().trim_matches(|ch: char| ch == ',' || ch == '.' || ch == '-').trim().to_string())
+        .unwrap_or_default()
+}
+
+pub fn extract_job(text: &str) -> String {
+    let pek_re = Regex::new(r"(?i)(?:tahun\s+\d+|[a-z0-9]+\))\s*,\s*([A-Za-z\/\s\-]+?),\s*(?:pemegang|Nomor|Induk|Kependudukan)").unwrap();
+    let pek_fallback = Regex::new(r"(?i)\b(Pelajar\/Mahasiswa|Pelajar\/\s*Mahasiswa|Karyawan\s+Swasta|Pegawai\s+Negeri\s+Sipil|PNS|Wiraswasta|Pedagang|Petani|Buruh|Ibu\s+Rumah\s+Tangga|Mengurus\s+Rumah\s+Tangga|Belum\/Tidak\s+Bekerja|Tidak\s+Bekerja)\b").unwrap();
+
+    let mut pekerjaan = String::new();
+    if let Some(c) = pek_re.captures(text) {
+        pekerjaan = c[1].trim().trim_matches(|ch: char| ch == ',' || ch == '.').trim().to_string();
+    } else if let Some(c) = pek_fallback.captures(text) {
+        pekerjaan = c[1].trim().to_string();
+    }
+    if pekerjaan.to_lowercase().contains("pelajar") && pekerjaan.to_lowercase().contains("mahasiswa") {
+        pekerjaan = "Pelajar / Mahasiswa".to_string();
+    }
+    pekerjaan
+}
+
+pub fn extract_shared_address(text: &str) -> String {
+    let cleaned = clean_text(text);
+    let lower = cleaned.to_lowercase();
+    let markers = [
+        "kedua-duanya bertempat tinggal di ",
+        "keduanya bertempat tinggal di ",
+        "bertempat tinggal di ",
+    ];
+
+    for marker in markers {
+        if let Some(pos) = lower.find(marker) {
+            let sub = &cleaned[pos + marker.len()..];
+            let sub_low = sub.to_lowercase();
+            let mut end_pos = sub.len();
+            for end_marker in [
+                ", pada saat ini",
+                "pada saat ini",
+                ", untuk sementara waktu",
+                "untuk sementara waktu",
+                "-untuk selanjutnya",
+                "untuk selanjutnya",
+                "dalam akta ini disebut",
+                "pihak pertama",
+                "pihak kedua",
+                "\"pihak",
+            ] {
+                if let Some(idx) = sub_low.find(end_marker) {
+                    if idx < end_pos {
+                        end_pos = idx;
+                    }
+                }
+            }
+            let raw_addr = sub[..end_pos].trim().trim_matches(|ch: char| ch == '.' || ch == '-' || ch == ',' || ch == ' ').trim();
+            if !raw_addr.is_empty() {
+                return raw_addr.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+pub fn is_pt_seller(text: &str) -> (bool, Option<String>) {
+    let lower = text.to_lowercase();
+    let is_pt = lower.contains("perseroan terbatas")
+        || lower.contains("badan hukum")
+        || Regex::new(r"(?i)\bpt\b\.?\s+[a-z]").unwrap().is_match(text);
+
+    if !is_pt {
+        return (false, None);
+    }
+
+    let re_pt_name = Regex::new(r"(?i)(?:perseroan\s+terbatas|pt\.?)\s+([A-Za-z0-9\s]{3,40})").unwrap();
+    let pt_name = re_pt_name.captures(text).map(|c| {
+        let name = c[1].trim().trim_matches(|ch: char| ch == ',' || ch == '.' || ch == '-').trim().to_string();
+        let upper = name.to_uppercase();
+        if upper.starts_with("PT ") || upper.starts_with("PT.") {
+            upper
+        } else {
+            format!("PT {}", upper)
+        }
+    });
+
+    (true, pt_name)
+}
+
+pub fn parse_person_details(text: &str, default_alamat: &str) -> PeroranganInfo {
+    let cleaned = clean_text(text);
+    let nik = extract_nik_from_text(&cleaned);
+    let nama = extract_name_from_person_text(&cleaned);
+    let tempat_lahir = extract_birth_place(&cleaned);
+    let tgl_lahir = parse_indonesian_date(&cleaned).unwrap_or_default();
+    let pekerjaan = extract_job(&cleaned);
+    let jenis_kelamin = determine_gender(&cleaned, &nik);
+
+    let mut alamat = String::new();
+    if let Some(pos) = cleaned.to_lowercase().find("bertempat tinggal di ") {
+        let sub = &cleaned[pos + "bertempat tinggal di ".len()..];
+        let sub_low = sub.to_lowercase();
+        let mut end_pos = sub.len();
+        for marker in [", pada saat ini", ", untuk sementara", "-untuk", "untuk selanjutnya", "pihak pertama", "pihak kedua", "penjual", "pembeli", "\"pihak"] {
+            if let Some(idx) = sub_low.find(marker) {
+                if idx < end_pos {
+                    end_pos = idx;
+                }
+            }
+        }
+        let raw_addr = sub[..end_pos].trim().trim_matches(|ch: char| ch == '.' || ch == '-' || ch == ',' || ch == ' ').trim();
+        alamat = raw_addr.to_string();
+    }
+
+    if alamat.is_empty() && !default_alamat.is_empty() {
+        alamat = default_alamat.to_string();
+    }
+
+    PeroranganInfo {
+        nik,
+        nama,
+        alamat,
+        tempat_lahir,
+        tgl_lahir,
+        jenis_kelamin,
+        pekerjaan,
+        tipe_bukti: "1".to_string(),
+    }
+}
+
+pub fn parse_penjual_section(raw_text: &str) -> PenjualOutput {
+    let (is_pt, pt_name) = is_pt_seller(raw_text);
+    if is_pt {
+        return PenjualOutput {
+            is_pt: true,
+            pt_name,
+            penjual_perorangan: None,
+            persetujuan: None,
+        };
+    }
+
+    let shared_address = extract_shared_address(raw_text);
+
+    let re_persetujuan_marker = Regex::new(
+        r"(?i)(?:telah\s+mendapat\s+persetujuan|persetujuan\s+suami|persetujuan\s+istri|persetujuan\s+isteri|persetujuan\s+dari|persetujuan\s+kawan\s+kawin|dengan\s+persetujuan)"
+    ).unwrap();
+
+    if let Some(mat) = re_persetujuan_marker.find(raw_text) {
+        let seller_part = &raw_text[..mat.start()];
+        let persetujuan_part = &raw_text[mat.start()..];
+
+        let penjual = parse_person_details(seller_part, &shared_address);
+        let persetujuan = parse_person_details(persetujuan_part, &shared_address);
+
+        PenjualOutput {
+            is_pt: false,
+            pt_name: None,
+            penjual_perorangan: Some(penjual),
+            persetujuan: Some(persetujuan),
+        }
+    } else {
+        let penjual = parse_person_details(raw_text, &shared_address);
+        PenjualOutput {
+            is_pt: false,
+            pt_name: None,
+            penjual_perorangan: Some(penjual),
+            persetujuan: None,
+        }
+    }
 }
 
 pub fn parse_buyer_to_custom_json(raw_text: &str, custom_id: Option<&str>) -> BuyerJsonOutput {
@@ -490,5 +741,85 @@ Kecamatan Mranggen.-
 
         let tgl = parse_akta_tanggal(&p2);
         assert_eq!(tgl, "14/09/2026");
+    }
+
+    #[test]
+    fn test_parse_penjual_perorangan_with_persetujuan() {
+        let sample = r#"
+I.-Tuan SUMADI, Warga Negara Indonesia, lahir di Demak, tanggal
+25 (duapuluh lima) Agustus tahun 1969 (seribu sembilan ratus
+enampuluh sembilan), Karyawan Swasta, pemegang Nomor Induk
+Kependudukan (NIK): 3374052508690001,
+— menurut keterangannya untuk melakukan perbuatan hukum
+dalam akta ini telah mendapat persetujuan suaminya
+penghadap Nyonya ROCHIMAH, Warga Negara Indonesia,
+lahir di Semarang, tanggal 01 (satu) Mei tahun 1972 (seribu
+sembilanratus tujuhpuluh dua), Belum/Tidak Bekerja,
+Pemegang Nomor Induk Kependudukan (NIK): -
+3374054105720002,
+— Kedua-duanya bertempat tinggal di Kota Semarang, Terboyo
+Wetan, Rukun Tetangga 003, Rukun Warga 002, Kelurahan
+Terboyo Wetan, Kecamatan Genuk, pada saat ini berada di
+saya, PPAT, serta para saksi, -
+—Untuk selanjutnya dalam akta ini disebut:-
+-"Pihak Pertama/ Penjual".
+"#;
+        let out = parse_penjual_section(sample);
+        assert!(!out.is_pt);
+        assert!(out.penjual_perorangan.is_some());
+        let penjual = out.penjual_perorangan.unwrap();
+        assert_eq!(penjual.nama, "SUMADI");
+        assert_eq!(penjual.nik, "3374052508690001");
+        assert_eq!(penjual.tempat_lahir, "Demak");
+        assert_eq!(penjual.tgl_lahir, "25/08/1969");
+        assert_eq!(penjual.pekerjaan, "Karyawan Swasta");
+        assert_eq!(penjual.jenis_kelamin, "Laki-laki");
+        assert!(penjual.alamat.contains("Kota Semarang, Terboyo Wetan"));
+
+        assert!(out.persetujuan.is_some());
+        let persetujuan = out.persetujuan.unwrap();
+        assert_eq!(persetujuan.nama, "ROCHIMAH");
+        assert_eq!(persetujuan.nik, "3374054105720002");
+        assert_eq!(persetujuan.tempat_lahir, "Semarang");
+        assert_eq!(persetujuan.tgl_lahir, "01/05/1972");
+        assert_eq!(persetujuan.pekerjaan, "Belum/Tidak Bekerja");
+        assert_eq!(persetujuan.jenis_kelamin, "Perempuan");
+        assert!(persetujuan.alamat.contains("Kota Semarang, Terboyo Wetan"));
+    }
+
+    #[test]
+    fn test_parse_penjual_pt() {
+        let sample = r#"
+I. Perseroan Terbatas PT DWI PERKASA UTAMA, berkedudukan di Demak,
+dalam hal ini diwakili oleh Tuan ABDUS SHOMAD...
+-Untuk selanjutnya disebut:
+-"Pihak Pertama/Penjual".
+"#;
+        let out = parse_penjual_section(sample);
+        assert!(out.is_pt);
+        assert_eq!(out.pt_name, Some("PT DWI PERKASA UTAMA".to_string()));
+        assert!(out.penjual_perorangan.is_none());
+        assert!(out.persetujuan.is_none());
+    }
+
+    #[test]
+    fn test_parse_umiyati_buyer_sample() {
+        let sample = r#"
+11. -Nyonya UMIYATI, Warga Negara Indonesia, lahir di Semarang,
+tanggai 09 (sembilan) Agustus tahun 1979 (seribu
+sembilanratus tujuhpuluh sembilan), Mengurus Rumah Tangga,
+pemegang Nomor Induk Kependudukan (NIK):
+3321044908790001, bertempat tinggal di Kabupaten Demak,
+Sriwulan, Rukun Tetangga 004, Rukun Warga 002, Desa
+Sriwulan, Kecamatan Sayung.-
+-untuk selanjutnya dalam akta ini disebut:-
+-"Pihak Kedua/Pembeli".-
+"#;
+        let res = parse_buyer_to_custom_json(sample, None);
+        assert_eq!(res.nik, "3321044908790001");
+        assert_eq!(res.nama, "UMIYATI");
+        assert_eq!(res.tempat_lahir, "Semarang");
+        assert_eq!(res.tgl_lahir, "09/08/1979");
+        assert_eq!(res.pekerjaan, "Mengurus Rumah Tangga");
     }
 }

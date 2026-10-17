@@ -14,6 +14,12 @@ PPAT.panelTemplate = (() => {
         selectPt: "ppat-select-pt",
         btnFillPenjual: "ppat-btn-fill-penjual",
         btnUploadPtDocs: "ppat-btn-upload-ptdocs",
+        cardPenjualPerorangan: "ppat-card-penjual-perorangan",
+        penjualPeroranganNama: "ppat-penjual-perorangan-nama",
+        penjualPeroranganNik: "ppat-penjual-perorangan-nik",
+        persetujuanPeroranganNama: "ppat-persetujuan-perorangan-nama",
+        btnFillPenjualPerorangan: "ppat-btn-fill-penjual-perorangan",
+        btnFillPersetujuanPerorangan: "ppat-btn-fill-persetujuan-perorangan",
         chkAutoSubmit: "ppat-chk-autosubmit",
         chkAutoUploadPtDocs: "ppat-chk-autoupload-ptdocs",
         listPersetujuan: "ppat-list-persetujuan",
@@ -96,23 +102,37 @@ PPAT.panelTemplate = (() => {
                     </label>
                 </div>
 
-                <!-- SECTION 1: PENJUAL (PT) -->
+                <!-- SECTION 1: PENJUAL (PT / PERORANGAN) -->
                 <div class="ppat-section" data-section="penjual">
                     <div class="ppat-section-header">
                         <span class="ppat-section-badge">1</span>
                         <div class="ppat-section-heading">
-                            <span class="ppat-section-title">Pihak Penjual (PT)</span>
-                            <span class="ppat-section-hint">Pilih PT & auto-isi</span>
+                            <span class="ppat-section-title">Pihak Penjual</span>
+                            <span class="ppat-section-hint">PT atau Perorangan</span>
                         </div>
                     </div>
                     <div class="ppat-section-body">
-                        <select id="${IDS.selectPt}" class="ppat-select">
-                            <option value="">-- Pilih PT --</option>
-                        </select>
-                        <button id="${IDS.btnFillPenjual}" class="ppat-btn-fill">Isi Form Penjual</button>
-                        <button id="${IDS.btnUploadPtDocs}" class="ppat-btn-action" style="margin-top: 6px; background: #059669; color: #fff; width: 100%; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;" title="Upload Akta Pendirian & NPWP ke website ATR/BPN">
-                            📤 Upload Dokumen PT (Akta & NPWP)
-                        </button>
+                        <div id="ppat-pt-selector-container">
+                            <select id="${IDS.selectPt}" class="ppat-select">
+                                <option value="">-- Pilih PT --</option>
+                            </select>
+                            <button id="${IDS.btnFillPenjual}" class="ppat-btn-fill">Isi Form Penjual (PT)</button>
+                            <button id="${IDS.btnUploadPtDocs}" class="ppat-btn-action" style="margin-top: 6px; background: #059669; color: #fff; width: 100%; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;" title="Upload Akta Pendirian & NPWP ke website ATR/BPN">
+                                📤 Upload Dokumen PT (Akta & NPWP)
+                            </button>
+                        </div>
+                        <div id="${IDS.cardPenjualPerorangan}" class="ppat-person-card hidden" style="margin-top: 8px;">
+                            <div class="ppat-person-card-header">
+                                <span class="ppat-person-name" id="${IDS.penjualPeroranganNama}">-</span>
+                                <span class="ppat-person-badge" style="background:#0284c7;color:#fff;">Perorangan</span>
+                            </div>
+                            <div class="ppat-person-meta">NIK: <b id="${IDS.penjualPeroranganNik}">-</b></div>
+                            <div class="ppat-person-meta">Persetujuan: <b id="${IDS.persetujuanPeroranganNama}">-</b></div>
+                            <div style="display:flex; gap:6px; margin-top:8px;">
+                                <button id="${IDS.btnFillPenjualPerorangan}" class="ppat-btn-fill" style="flex:1;">Isi Ulang Penjual</button>
+                                <button id="${IDS.btnFillPersetujuanPerorangan}" class="ppat-btn-fill" style="flex:1; background:#0891b2;">Isi Ulang Persetujuan</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

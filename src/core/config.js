@@ -38,6 +38,8 @@ PPAT.config = Object.freeze({
         TIPE_BUKTI_SAKSI: "1", // 1: KTP
         TIPE_BUKTI_PEMBELI: "1", // 1: KTP
         TIPE_PIHAK_NON_PERORANGAN: "Non Perorangan",
+        TIPE_PIHAK_PERORANGAN: "Perorangan",
+        TIPE_BUKTI_PENJUAL: "1", // 1: KTP
     }),
 
     SELECTORS: Object.freeze({
@@ -66,6 +68,22 @@ PPAT.config = Object.freeze({
                 ["#frmInput1BadanHukum #tNPWP", "npwp"],
                 ["#frmInput1BadanHukum #tIDENTITAS", "akta"],
                 ["#frmInput1BadanHukum #tPENDIRIAN", "tgl_akta"],
+            ],
+        }),
+
+        penjualPerorangan: Object.freeze({
+            tipePihak: "select#tipepihak1",
+            form: "#frmtipepihak1Dukcapil",
+            btnTambah: "#btn-tambahtipepihak1NIK",
+            tipeBukti: "#frmtipepihak1Dukcapil select#tipebuktipihak1",
+            fields: [
+                ["#frmtipepihak1Dukcapil #tNIKPemilik", "nik"],
+                ["#frmtipepihak1Dukcapil #tNAMA_LENGKAP", "nama"],
+                ["#frmtipepihak1Dukcapil #tALAMAT", "alamat"],
+                ["#frmtipepihak1Dukcapil #tTEMPAT_LAHIR", "tempat_lahir"],
+                ["#frmtipepihak1Dukcapil #tTANGGAL_LAHIR", "tgl_lahir"],
+                ["#frmtipepihak1Dukcapil #tJENIS_PEKERJAAN", "pekerjaan"],
+                ["#frmtipepihak1Dukcapil #tNPWP", "npwp"],
             ],
         }),
 
@@ -217,6 +235,9 @@ PPAT.config = Object.freeze({
         penjualFormMissing:
             "Gagal memuat Form Penjual (Badan Hukum). Pastikan Anda berada di halaman pembuatan Akta PPAT.",
         penjualFilled: "Data Penjual (Badan Hukum) berhasil diisi!",
+        penjualPeroranganFormMissing:
+            "Gagal memuat Form Penjual (Perorangan). Pastikan Anda berada di halaman pembuatan Akta PPAT.",
+        penjualPeroranganFilled: (nama) => `Data Penjual Perorangan (${nama}) berhasil diisi!`,
         persetujuanFormMissing:
             "Form Pihak Persetujuan tidak ditemukan. Pastikan Anda berada di seksi E (Pihak Persetujuan).",
         persetujuanFilled: "Data Pihak Persetujuan berhasil diisi!\nSilakan periksa dan klik 'Tambah'.",

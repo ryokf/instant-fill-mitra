@@ -20,6 +20,7 @@ pub struct CropResult {
     pub raw_text: String,
     pub buyer_info: parser::BuyerJsonOutput,
     pub akta_info: parser::AktaInfo,
+    pub penjual_info: parser::PenjualOutput,
 }
 
 fn is_buyer_conclusion(text: &str) -> bool {
@@ -74,6 +75,70 @@ fn is_footer_line(text: &str) -> bool {
         || lower.contains("halaman ")
         || lower.contains("daerah kerja")
         || lower.contains("lembar ")
+}
+
+fn is_header_or_footer_line(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    is_footer_line(text)
+        || lower.contains("pejabat pembuat akta tanah")
+        || lower.contains("(ppat)")
+        || lower.contains("wahyuning")
+        || lower.contains("wahyumng")
+        || lower.contains("provinsi")
+        || lower.contains("sk. kepala bpn")
+        || lower.contains("sk. kep")
+        || lower.contains("jalan raya say")
+}
+
+pub fn extract_seller_lines(pages_data: &[(Vec<String>, u32)]) -> String {
+    let mut seller_lines: Vec<String> = Vec::new();
+    let mut collecting = false;
+    let mut seller_done = false;
+
+    for (lines, _) in pages_data {
+        if seller_done { break; }
+        for line in lines {
+            let low = line.to_lowercase();
+            if is_header_or_footer_line(line) {
+                continue;
+            }
+
+            if !collecting {
+                if is_seller_conclusion(line) {
+                    continue;
+                }
+                let trimmed = line.trim();
+                if low.contains("akhir akta ini")
+                    || trimmed.starts_with("I.")
+                    || trimmed.starts_with("1.")
+                    || trimmed.starts_with("I-")
+                    || trimmed.starts_with("1-")
+                    || trimmed.starts_with("I.-")
+                    || trimmed.starts_with("1.-")
+                {
+                    collecting = true;
+                    if low.contains("akhir akta ini") {
+                        continue;
+                    }
+                }
+            }
+
+            if collecting {
+                seller_lines.push(line.clone());
+                if is_seller_conclusion(line) {
+                    seller_done = true;
+                    break;
+                }
+                if is_buyer_start(line) {
+                    seller_lines.pop(); // remove buyer line
+                    seller_done = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    seller_lines.join("\n")
 }
 
 /// Fungsi utama: Proses dokumen PDF akta dan ekstrak data pembeli
@@ -182,6 +247,10 @@ pub async fn process_akta_pdf(
         tanggal_akta: tanggal_akta.clone(),
     };
 
+    // Ekstrak Data Penjual (PT atau Perorangan beserta Pihak Persetujuan)
+    let seller_raw_text = extract_seller_lines(&pages_data);
+    let penjual_info = parser::parse_penjual_section(&seller_raw_text);
+
     // KASUS A: Seluruh data pembeli berada pada SATU halaman yang sama
     if let Some(start_line_idx) = start_line_same_page {
         let selected_lines = &lines_end[start_line_idx..=end_line_idx];
@@ -198,6 +267,7 @@ pub async fn process_akta_pdf(
             raw_text,
             buyer_info,
             akta_info,
+            penjual_info,
         });
     }
 
@@ -262,8 +332,45 @@ pub async fn process_akta_pdf(
             raw_text,
             buyer_info,
             akta_info,
+            penjual_info,
         });
     }
 
     Err("Gagal menentukan batas awal data pembeli pada dokumen akta.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_inspect_ajb() {
+        let path = Path::new(r"C:\Users\ryokh\.gemini\antigravity\brain\6e7a6fb3-a7ce-4175-94fc-67eb245eefef\.user_uploaded\media_1792217419304_da22a521.pdf");
+        if path.exists() {
+            let res = process_akta_pdf(path, 2.0, None).await.unwrap();
+            assert!(!res.penjual_info.is_pt);
+            let penjual = res.penjual_info.penjual_perorangan.as_ref().unwrap();
+            assert_eq!(penjual.nama, "SUMADI");
+            assert_eq!(penjual.nik, "3374052508690001");
+            assert_eq!(penjual.tempat_lahir, "Demak");
+            assert_eq!(penjual.tgl_lahir, "25/08/1969");
+            assert_eq!(penjual.jenis_kelamin, "Laki-laki");
+            assert_eq!(penjual.pekerjaan, "Karyawan Swasta");
+
+            let persetujuan = res.penjual_info.persetujuan.as_ref().unwrap();
+            assert_eq!(persetujuan.nama, "ROCHIMAH");
+            assert_eq!(persetujuan.nik, "3374054105720002");
+            assert_eq!(persetujuan.tempat_lahir, "Semarang");
+            assert_eq!(persetujuan.tgl_lahir, "01/05/1972");
+            assert_eq!(persetujuan.jenis_kelamin, "Perempuan");
+            assert_eq!(persetujuan.pekerjaan, "Belum/Tidak Bekerja");
+
+            assert_eq!(res.buyer_info.nama, "UMIYATI");
+            assert_eq!(res.buyer_info.nik, "3321044908790001");
+            assert_eq!(res.buyer_info.tgl_lahir, "09/08/1979");
+            assert_eq!(res.akta_info.nomor_akta, "606/2026");
+            assert_eq!(res.akta_info.tanggal_akta, "12/10/2026");
+            println!("ALL AJB FULL PIPELINE ASSERTIONS PASSED!");
+        }
+    }
 }

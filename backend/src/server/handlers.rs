@@ -154,6 +154,7 @@ pub async fn extract_pembeli_handler(multipart: Multipart) -> Response {
                     "message": "Data akta dan pembeli berhasil diekstrak.",
                     "data": crop_result.buyer_info,
                     "akta": crop_result.akta_info,
+                    "penjual": crop_result.penjual_info,
                     "meta": {
                         "page_number": crop_result.page_number,
                         "total_pages": crop_result.total_pages,

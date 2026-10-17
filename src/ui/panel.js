@@ -597,6 +597,13 @@ PPAT.panel = (() => {
             pembeliPekerjaan,
             aktaNomor,
             aktaTanggal,
+            cardPenjualPerorangan,
+            penjualPeroranganNama,
+            penjualPeroranganNik,
+            persetujuanPeroranganNama,
+            btnFillPenjualPerorangan,
+            btnFillPersetujuanPerorangan,
+            selectPt,
         } = els;
 
         if (!dropzoneAkta || !inputAkta) return;
@@ -617,6 +624,21 @@ PPAT.panel = (() => {
             if (aktaNomor) aktaNomor.textContent = (akta && akta.nomor_akta) || data.nomor_akta || "-";
             if (aktaTanggal) aktaTanggal.textContent = (akta && akta.tanggal_akta) || data.tanggal_akta || "-";
             cardPembeli.classList.remove("hidden");
+        };
+
+        const renderPenjualPeroranganCard = (pPerorangan, pPersetujuan) => {
+            if (!cardPenjualPerorangan) return;
+            if (penjualPeroranganNama) penjualPeroranganNama.textContent = (pPerorangan && pPerorangan.nama) || "-";
+            if (penjualPeroranganNik) penjualPeroranganNik.textContent = (pPerorangan && pPerorangan.nik) || "-";
+            if (persetujuanPeroranganNama) {
+                persetujuanPeroranganNama.textContent =
+                    (pPersetujuan && pPersetujuan.nama) ? pPersetujuan.nama : "(Tidak Ada)";
+            }
+            if (btnFillPersetujuanPerorangan) {
+                btnFillPersetujuanPerorangan.style.display =
+                    (pPersetujuan && pPersetujuan.nama) ? "block" : "none";
+            }
+            cardPenjualPerorangan.classList.remove("hidden");
         };
 
         const handlePdfFile = async (file) => {
@@ -660,8 +682,56 @@ PPAT.panel = (() => {
                         aktaStatusPrefix = `Akta No. ${aktaData.nomor_akta || "-"} (${aktaData.tanggal_akta || "-"}) tersimpan. `;
                     }
 
-                    // 2. Data pembeli disimpan di memori dan diabaikan dulu sampai pihak penjual & persetujuan selesai diupload
-                    setUploadStatus(`✔ ${aktaStatusPrefix}Silakan pilih pihak penjual (PT) di atas.`, "ok");
+                    // 2. Cek Data Penjual (PT vs Perorangan)
+                    const penjualInfo = result.penjual;
+                    if (penjualInfo && !penjualInfo.is_pt && penjualInfo.penjual_perorangan) {
+                        const pPerorangan = penjualInfo.penjual_perorangan;
+                        const pPersetujuan = penjualInfo.persetujuan;
+                        PPAT.activePenjualPerorangan = pPerorangan;
+                        PPAT.activePersetujuanPerorangan = pPersetujuan;
+
+                        renderPenjualPeroranganCard(pPerorangan, pPersetujuan);
+
+                        setUploadStatus(`⏳ ${aktaStatusPrefix}Penjual perorangan (${pPerorangan.nama}). Mengisi form penjual...`, "info");
+
+                        // Isi Form Penjual Perorangan
+                        await PPAT.penjualFiller.fillPerorangan(pPerorangan, {
+                            autoSubmit: isAutoSubmit(),
+                        });
+
+                        // Jika ada pihak persetujuan, isi Form Pihak Persetujuan
+                        let persetujuanInfoText = "";
+                        if (pPersetujuan && pPersetujuan.nama) {
+                            await PPAT.dom.delay(800);
+                            setUploadStatus(`⏳ ${aktaStatusPrefix}Mengisi data Pihak Persetujuan (${pPersetujuan.nama})...`, "info");
+                            const setujuOk = await PPAT.persetujuanFiller.fill(pPersetujuan, {
+                                autoSubmit: isAutoSubmit(),
+                                autoUploadDocs: false,
+                            });
+                            if (setujuOk) {
+                                persetujuanInfoText = ` & Persetujuan (${pPersetujuan.nama})`;
+                            }
+                        }
+
+                        setUploadStatus(
+                            `✔ ${aktaStatusPrefix}Penjual (${pPerorangan.nama})${persetujuanInfoText} berhasil diisi! Silakan klik 'Isi Ulang Form Pembeli' bila diperlukan.`,
+                            "ok"
+                        );
+                    } else {
+                        // Jika penjual adalah PT (Badan Hukum)
+                        if (cardPenjualPerorangan) cardPenjualPerorangan.classList.add("hidden");
+
+                        if (penjualInfo && penjualInfo.pt_name && PPAT.ptMatcher) {
+                            const matchedKey = PPAT.ptMatcher.findPtKeyByName(penjualInfo.pt_name);
+                            if (matchedKey && selectPt) {
+                                selectPt.value = matchedKey;
+                                selectPt.dispatchEvent(new Event("change"));
+                                setUploadStatus(`✔ ${aktaStatusPrefix}Terdeteksi PT: ${penjualInfo.pt_name}. Mengisi form PT...`, "ok");
+                                return;
+                            }
+                        }
+                        setUploadStatus(`✔ ${aktaStatusPrefix}Silakan pilih pihak penjual (PT) di atas.`, "ok");
+                    }
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";
                     setUploadStatus(`⚠ ${err}`, "warn");
@@ -712,6 +782,30 @@ PPAT.panel = (() => {
                     PPAT.pembeliFiller.fill(lastPembeliData, {
                         autoSubmit: false,
                         scrollIntoView: true,
+                    });
+                }
+            });
+        }
+
+        // Tombol isi ulang penjual perorangan
+        if (btnFillPenjualPerorangan) {
+            btnFillPenjualPerorangan.addEventListener("click", () => {
+                if (PPAT.activePenjualPerorangan && PPAT.penjualFiller) {
+                    PPAT.penjualFiller.fillPerorangan(PPAT.activePenjualPerorangan, {
+                        autoSubmit: false,
+                        showAlert: true,
+                    });
+                }
+            });
+        }
+
+        // Tombol isi ulang persetujuan perorangan
+        if (btnFillPersetujuanPerorangan) {
+            btnFillPersetujuanPerorangan.addEventListener("click", () => {
+                if (PPAT.activePersetujuanPerorangan && PPAT.persetujuanFiller) {
+                    PPAT.persetujuanFiller.fill(PPAT.activePersetujuanPerorangan, {
+                        autoSubmit: false,
+                        autoUploadDocs: false,
                     });
                 }
             });
