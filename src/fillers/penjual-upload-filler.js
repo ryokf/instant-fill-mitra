@@ -438,7 +438,10 @@ PPAT.penjualUploadFiller = (() => {
     /**
      * Memeriksa apakah seorang pihak persetujuan sudah tercatat di tabel/daftar web ATR/BPN.
      */
-    function isPersonInDaftar(personName) {
+    function isPersonInDaftar(personName, personNik) {
+        if (PPAT.persetujuanFiller && typeof PPAT.persetujuanFiller.isPersonAlreadyInDaftar === "function") {
+            return PPAT.persetujuanFiller.isPersonAlreadyInDaftar(personName, personNik);
+        }
         const container = document.querySelector(config.SELECTORS.persetujuan.daftarPlaceholder || "#daftarpemohonpihaksetujuplaceholder");
         if (!container) return false;
         const cleanTarget = (personName || "").trim().toLowerCase();
@@ -594,7 +597,7 @@ PPAT.penjualUploadFiller = (() => {
                 await dom.delay(300);
 
                 // Cek apakah personil ini sudah ada di daftar pihak persetujuan web ATR/BPN
-                const alreadyInDaftar = isPersonInDaftar(person.nama);
+                const alreadyInDaftar = isPersonInDaftar(person.nama, person.nik);
                 let btnUnggahPerson = null;
 
                 if (alreadyInDaftar) {

@@ -10,8 +10,66 @@ PPAT.penjualFiller = (() => {
     function isBadanHukumFormActive() {
         const tipePihak = document.querySelector(S.tipePihak);
         const form = document.querySelector(S.form);
-        const isNonPerorangan = !tipePihak || tipePihak.value === DEFAULTS.TIPE_PIHAK_NON_PERORANGAN || tipePihak.value === "Badan Hukum";
-        return Boolean(form) && isNonPerorangan;
+        const hasInputs = Boolean(document.querySelector("#frmInput1BadanHukum #tNAMA_LENGKAPPihak1"));
+        const isNonPerorangan = Boolean(tipePihak) && (tipePihak.value === DEFAULTS.TIPE_PIHAK_NON_PERORANGAN || tipePihak.value === "Badan Hukum");
+        return Boolean(form) && isNonPerorangan && hasInputs;
+    }
+
+    /**
+     * Memastikan form Badan Hukum tampil (mengubah dropdown tipe penjual ke "Badan Hukum" / "Non Perorangan"
+     * sampai form #frmInput1BadanHukum muncul).
+     * @returns {Promise<boolean>} false jika form gagal dimuat
+     */
+    async function ensureBadanHukumForm() {
+        if (isBadanHukumFormActive()) {
+            console.log("[PenjualFiller] Form Badan Hukum sudah aktif dan siap.");
+            return true;
+        }
+
+        console.log("[PenjualFiller] Mengubah tipe penjual (tipepihak1) menjadi 'Badan Hukum' (Non Perorangan)...");
+
+        // 1. Pilih opsi "Non Perorangan" (label tampilan: "Badan Hukum") pada select#tipepihak1
+        if (document.querySelector(S.tipePihak)) {
+            dom.setSelect2Value(S.tipePihak, DEFAULTS.TIPE_PIHAK_NON_PERORANGAN);
+        }
+
+        // 2. Jalankan juga di Page Context untuk memicu event Select2 & AJAX RefreshPemohonpihak1
+        dom.runInPageContext((sel, val) => {
+            if (!window.jQuery) return;
+            const $ = window.jQuery;
+            const $el = $(sel);
+            if ($el.length) {
+                $el.val(val).trigger("change");
+                if ($el.data("select2")) {
+                    $el.trigger("change.select2");
+                }
+            }
+            if (typeof window.RefreshPemohonpihak1 === "function") {
+                window.RefreshPemohonpihak1("Pihak 1");
+            }
+        }, S.tipePihak, DEFAULTS.TIPE_PIHAK_NON_PERORANGAN);
+
+        // 3. Update teks Select2 container agar terlihat "Badan Hukum"
+        const container = document.getElementById("select2-tipepihak1-container");
+        if (container) {
+            container.textContent = "Badan Hukum";
+            container.title = "Badan Hukum";
+        }
+
+        // 4. Tunggu form #frmInput1BadanHukum muncul di dalam #inputpihak1placeholder
+        const form = await dom.waitForElement(S.form, TIMING.PENJUAL_FORM_TIMEOUT_MS);
+        if (!form) {
+            console.error("[PenjualFiller] Form #frmInput1BadanHukum tidak ditemukan setelah timeout.");
+            return false;
+        }
+
+        // 5. Tunggu sampai field nama dan dropdown jenis/tipe benar-benar tersedia
+        await dom.waitForElement("#frmInput1BadanHukum #tNAMA_LENGKAPPihak1", 5000);
+        await dom.waitForElement("#frmInput1BadanHukum select#tipepemilikid", 5000);
+        await dom.waitForElement("#frmInput1BadanHukum select#tipeusaha", 5000);
+
+        await dom.delay(TIMING.FORM_SETTLE_DELAY_MS + 200);
+        return true;
     }
 
     function isPeroranganFormActive() {
@@ -19,24 +77,6 @@ PPAT.penjualFiller = (() => {
         const form = document.querySelector(SP.form);
         const isPerorangan = Boolean(tipePihak) && tipePihak.value === DEFAULTS.TIPE_PIHAK_PERORANGAN;
         return Boolean(form) && isPerorangan;
-    }
-
-    /**
-     * Memastikan form Badan Hukum tampil (beralih ke "Non Perorangan" bila perlu).
-     * @returns {Promise<boolean>} false jika form gagal dimuat
-     */
-    async function ensureBadanHukumForm() {
-        if (isBadanHukumFormActive()) return true;
-
-        if (document.querySelector(S.tipePihak)) {
-            dom.setSelect2Value(S.tipePihak, DEFAULTS.TIPE_PIHAK_NON_PERORANGAN);
-        }
-
-        const form = await dom.waitForElement(S.form, TIMING.PENJUAL_FORM_TIMEOUT_MS);
-        if (!form) return false;
-
-        await dom.delay(TIMING.FORM_SETTLE_DELAY_MS);
-        return true;
     }
 
     /**
@@ -170,19 +210,98 @@ PPAT.penjualFiller = (() => {
 
         const autoSubmit = options.autoSubmit ?? true;
 
+        console.log(`[PenjualFiller] Memulai pengisian Penjual Badan Hukum (PT): '${data.nama}'...`);
+
+        // 1. Pastikan dropdown tipe penjual diubah ke Badan Hukum dan form #frmInput1BadanHukum siap
         if (!(await ensureBadanHukumForm())) {
             alert(MESSAGES.penjualFormMissing);
             return false;
         }
 
-        dom.setSelect2Value(S.tipePemilik, data.tipe_pemilik || DEFAULTS.TIPE_PEMILIK);
-        dom.setSelect2Value(S.tipeUsaha, data.tipe_usaha || DEFAULTS.TIPE_USAHA);
+        // 2. Set dropdown Jenis: BUMS ("33") dan Tipe: PT ("4")
+        const tipePemilikVal = (data.tipe_pemilik === "BUMS" || !data.tipe_pemilik) ? "33" : String(data.tipe_pemilik);
+        const tipeUsahaVal = (data.tipe_usaha === "PT" || !data.tipe_usaha) ? "4" : String(data.tipe_usaha);
+
+        console.log(`[PenjualFiller] Mengatur Jenis: '${tipePemilikVal}' (BUMS) & Tipe: '${tipeUsahaVal}' (PT)...`);
+        dom.setSelect2Value(S.tipePemilik, tipePemilikVal);
+        dom.setSelect2Value(S.tipeUsaha, tipeUsahaVal);
+
+        // 3. Isi field teks standar (Nama, Alamat, Kota, NPWP, No Akta, Tgl Akta)
         dom.fillFields(S.fields, data);
+
+        // 4. Direct DOM value assignment & input/change events
+        const fieldMappings = [
+            ["#frmInput1BadanHukum #tNAMA_LENGKAPPihak1", data.nama],
+            ["#frmInput1BadanHukum #tALAMAT", data.alamat],
+            ["#frmInput1BadanHukum #tLOKASI", data.kota],
+            ["#frmInput1BadanHukum #tNPWP", data.npwp],
+            ["#frmInput1BadanHukum #tIDENTITAS", data.akta],
+            ["#frmInput1BadanHukum #tPENDIRIAN", data.tgl_akta],
+        ];
+
+        for (const [selector, val] of fieldMappings) {
+            if (val === undefined || val === null) continue;
+            const el = document.querySelector(selector);
+            if (el) {
+                el.value = val;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        }
+
+        // 5. Sinkronisasi di konteks Main World (jQuery, Select2, SetInput, DateTimePicker)
+        dom.runInPageContext((pemilikVal, usahaVal, nama, alamat, kota, npwp, akta, tglAkta) => {
+            if (!window.jQuery) return;
+            const $ = window.jQuery;
+            const $f = $("#frmInput1BadanHukum");
+            if (!$f.length) return;
+
+            // Sync Select2 Jenis & Tipe
+            const $pemilik = $f.find("select#tipepemilikid");
+            if ($pemilik.length) {
+                $pemilik.val(pemilikVal).trigger("change");
+                if ($pemilik.data("select2")) $pemilik.trigger("change.select2");
+            }
+            const $usaha = $f.find("select#tipeusaha");
+            if ($usaha.length) {
+                $usaha.val(usahaVal).trigger("change");
+                if ($usaha.data("select2")) $usaha.trigger("change.select2");
+            }
+            if (typeof window.SetInput === "function") {
+                try { window.SetInput(); } catch (e) {}
+            }
+
+            // Sync Form fields
+            if (nama) $f.find("#tNAMA_LENGKAPPihak1").val(nama).trigger("input").trigger("change");
+            if (alamat) $f.find("#tALAMAT").val(alamat).trigger("input").trigger("change");
+            if (kota) $f.find("#tLOKASI").val(kota).trigger("input").trigger("change");
+            if (npwp) $f.find("#tNPWP").val(npwp).trigger("input").trigger("change");
+            if (akta) $f.find("#tIDENTITAS").val(akta).trigger("input").trigger("change");
+
+            // Sync DateTimePicker untuk Tanggal Akta Pendirian
+            if (tglAkta) {
+                const $tgl = $f.find("#tPENDIRIAN");
+                $tgl.val(tglAkta).trigger("input").trigger("change");
+                const picker = $tgl.data("DateTimePicker") || $("#tglAkta").data("DateTimePicker");
+                if (picker && typeof picker.date === "function" && window.moment) {
+                    try {
+                        picker.date(window.moment(tglAkta, "DD/MM/YYYY"));
+                    } catch (e) {
+                        console.warn("[PenjualBadanHukum] DateTimePicker sync:", e);
+                    }
+                }
+            }
+        }, tipePemilikVal, tipeUsahaVal, data.nama, data.alamat, data.kota, data.npwp, data.akta, data.tgl_akta);
 
         if (autoSubmit) {
             await dom.delay(TIMING.SUBMIT_DELAY_MS);
             const submitBtn = document.querySelector(S.btnTambah);
             if (submitBtn) {
+                console.log("[PenjualFiller] Menekan tombol Tambah Penjual Badan Hukum (PT)...");
+                dom.runInPageContext((btnSel) => {
+                    const btn = document.querySelector(btnSel);
+                    if (btn) btn.click();
+                }, S.btnTambah);
                 submitBtn.click();
 
                 const autoUploadDocs = options.autoUploadDocs ?? true;

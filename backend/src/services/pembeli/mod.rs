@@ -53,6 +53,19 @@ fn is_buyer_start(text: &str) -> bool {
         || trimmed.starts_with("Il-")
         || trimmed.starts_with("1l-")
         || trimmed.starts_with("1L-")
+        || trimmed.starts_with("II ")
+        || trimmed.starts_with("11 ")
+        || trimmed.starts_with("2 ")
+        || trimmed.starts_with("II.-")
+        || trimmed.starts_with("2.-")
+        || lower.starts_with("pihak kedua")
+        || lower.starts_with("pihak ke dua")
+        || lower.starts_with("pihak ke-dua")
+        || lower.contains("selaku pihak kedua")
+        || lower.contains("disebut pihak kedua")
+        || lower.contains("disebut sebagai pihak kedua")
+        || lower.contains("selanjutnya disebut pihak kedua")
+        || lower.contains("selaku pembeli")
         || ((lower.starts_with("tuan ") || lower.starts_with("nona ") || lower.starts_with("nyonya ")) 
             && (lower.contains("warga negara") || lower.contains("lahir di")))
 }
@@ -90,23 +103,29 @@ fn is_header_or_footer_line(text: &str) -> bool {
         || lower.contains("jalan raya say")
 }
 
-pub fn extract_seller_lines(pages_data: &[(Vec<String>, u32)]) -> String {
+pub fn extract_seller_lines_until(
+    pages_data: &[(Vec<String>, u32)],
+    buyer_start_page: usize,
+    buyer_start_line: usize,
+) -> String {
     let mut seller_lines: Vec<String> = Vec::new();
     let mut collecting = false;
-    let mut seller_done = false;
 
-    for (lines, _) in pages_data {
-        if seller_done { break; }
-        for line in lines {
+    for (page_idx, (lines, _)) in pages_data.iter().enumerate() {
+        if page_idx > buyer_start_page {
+            break;
+        }
+        for (line_idx, line) in lines.iter().enumerate() {
+            if page_idx == buyer_start_page && line_idx >= buyer_start_line {
+                break;
+            }
+
             let low = line.to_lowercase();
             if is_header_or_footer_line(line) {
                 continue;
             }
 
             if !collecting {
-                if is_seller_conclusion(line) {
-                    continue;
-                }
                 let trimmed = line.trim();
                 if low.contains("akhir akta ini")
                     || trimmed.starts_with("I.")
@@ -115,9 +134,20 @@ pub fn extract_seller_lines(pages_data: &[(Vec<String>, u32)]) -> String {
                     || trimmed.starts_with("1-")
                     || trimmed.starts_with("I.-")
                     || trimmed.starts_with("1.-")
+                    || trimmed.starts_with("I. ")
+                    || trimmed.starts_with("1. ")
+                    || low.contains("menghadap kepada saya")
+                    || low.contains("hadir di hadapan saya")
+                    || low.contains("hadir dihadapan saya")
+                    || low.contains("berhadapan dengan saya")
                 {
                     collecting = true;
-                    if low.contains("akhir akta ini") {
+                    if low.contains("akhir akta ini")
+                        || low.contains("menghadap kepada saya")
+                        || low.contains("hadir di hadapan saya")
+                        || low.contains("hadir dihadapan saya")
+                        || low.contains("berhadapan dengan saya")
+                    {
                         continue;
                     }
                 }
@@ -125,15 +155,6 @@ pub fn extract_seller_lines(pages_data: &[(Vec<String>, u32)]) -> String {
 
             if collecting {
                 seller_lines.push(line.clone());
-                if is_seller_conclusion(line) {
-                    seller_done = true;
-                    break;
-                }
-                if is_buyer_start(line) {
-                    seller_lines.pop(); // remove buyer line
-                    seller_done = true;
-                    break;
-                }
             }
         }
     }
@@ -247,12 +268,11 @@ pub async fn process_akta_pdf(
         tanggal_akta: tanggal_akta.clone(),
     };
 
-    // Ekstrak Data Penjual (PT atau Perorangan beserta Pihak Persetujuan)
-    let seller_raw_text = extract_seller_lines(&pages_data);
-    let penjual_info = parser::parse_penjual_section(&seller_raw_text);
-
     // KASUS A: Seluruh data pembeli berada pada SATU halaman yang sama
     if let Some(start_line_idx) = start_line_same_page {
+        let seller_raw_text = extract_seller_lines_until(&pages_data, end_page_idx, start_line_idx);
+        let penjual_info = parser::parse_penjual_section(&seller_raw_text);
+
         let selected_lines = &lines_end[start_line_idx..=end_line_idx];
         let raw_text = selected_lines.join("\n");
         let mut buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
@@ -295,7 +315,7 @@ pub async fn process_akta_pdf(
                 start_line_prev = Some(s_end + 1);
             }
         } else {
-            for (l_idx, line) in lines_start.iter().enumerate() {
+            for (l_idx, line) in lines_start.iter().enumerate().rev() {
                 if is_buyer_start(line) {
                     start_line_prev = Some(l_idx);
                     break;
@@ -304,6 +324,9 @@ pub async fn process_akta_pdf(
         }
 
         let start_line_idx = start_line_prev.unwrap_or(0);
+
+        let seller_raw_text = extract_seller_lines_until(&pages_data, start_page_idx, start_line_idx);
+        let penjual_info = parser::parse_penjual_section(&seller_raw_text);
 
         let mut selected_lines_p1: Vec<String> = Vec::new();
         for l_idx in start_line_idx..lines_start.len() {
@@ -371,6 +394,28 @@ mod tests {
             assert_eq!(res.akta_info.nomor_akta, "606/2026");
             assert_eq!(res.akta_info.tanggal_akta, "12/10/2026");
             println!("ALL AJB FULL PIPELINE ASSERTIONS PASSED!");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_inspect_ajb_pt() {
+        for (p, expected_pt) in [
+            (r"c:\Users\ryokh\Downloads\AJB.pdf", "PT YUDHA MUDA SAKTI"),
+            (r"C:\Users\ryokh\Downloads\organized (7).pdf", "PT AMANAH BERKAH PROPERTY"),
+            (r"C:\Users\ryokh\Downloads\document (13).pdf", "PT DWI PERKASA UTAMA"),
+        ] {
+            let path = Path::new(p);
+            if path.exists() {
+                let res = process_akta_pdf(path, 2.0, None).await.unwrap();
+                println!("=== FILE: {} ===", p);
+                println!("is_pt = {}, pt_name = {:?}", res.penjual_info.is_pt, res.penjual_info.pt_name);
+                println!("akta = {:?}", res.akta_info);
+                println!("buyer = {:?}", res.buyer_info);
+                println!("penjual_info = {:?}", res.penjual_info);
+                assert!(res.penjual_info.is_pt, "File {} harus terdeteksi sebagai PT!", p);
+                assert_eq!(res.penjual_info.pt_name.as_deref(), Some(expected_pt));
+                assert!(res.penjual_info.penjual_perorangan.is_none());
+            }
         }
     }
 }

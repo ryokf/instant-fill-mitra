@@ -160,6 +160,237 @@ PPAT.panel = (() => {
         }
     }
 
+    function renderPenjualPeroranganCard(els, pPerorangan, pPersetujuan) {
+        const {
+            cardPenjualPerorangan,
+            penjualPeroranganNama,
+            penjualPeroranganNik,
+            persetujuanPeroranganNama,
+            btnFillPersetujuanPerorangan,
+        } = els;
+        if (!cardPenjualPerorangan) return;
+        if (penjualPeroranganNama) penjualPeroranganNama.textContent = (pPerorangan && pPerorangan.nama) || "-";
+        if (penjualPeroranganNik) penjualPeroranganNik.textContent = (pPerorangan && pPerorangan.nik) || "-";
+        if (persetujuanPeroranganNama) {
+            persetujuanPeroranganNama.textContent =
+                (pPersetujuan && pPersetujuan.nama) ? pPersetujuan.nama : "(Tidak Ada)";
+        }
+        if (btnFillPersetujuanPerorangan) {
+            btnFillPersetujuanPerorangan.style.display =
+                (pPersetujuan && pPersetujuan.nama) ? "block" : "none";
+        }
+        cardPenjualPerorangan.classList.remove("hidden");
+    }
+
+    /**
+     * Otomatisasi pengisian data penjual (PT atau Perorangan) beserta Pihak Persetujuan.
+     * @param {Object} penjualInfo - Data penjual hasil ekstraksi backend
+     * @param {Object} els - Referensi elemen-elemen panel
+     * @param {Function} updateStatus - Callback untuk menampilkan status di panel
+     * @param {string} prefix - Prefix teks status (misal nomor akta)
+     * @returns {Promise<boolean>}
+     */
+    async function autoFillPenjualAndPersetujuan(penjualInfo, els, updateStatus, prefix = "") {
+        if (!penjualInfo) return false;
+
+        const { selectPt, listPersetujuan, cardPenjualPerorangan } = els;
+
+        // Cari apakah data di penjualInfo cocok dengan salah satu PT di ptDatabase
+        // (baik dari nama PT, maupun dari NIK/Nama pengurus/persetujuan PT)
+        const ptName = penjualInfo.pt_name;
+        let matchedKey = ptName && PPAT.ptMatcher ? PPAT.ptMatcher.findPtKeyByName(ptName) : null;
+
+        if (!matchedKey && PPAT.ptDatabase) {
+            const candidateNiks = [
+                penjualInfo.pt_nik,
+                penjualInfo.penjual_perorangan && penjualInfo.penjual_perorangan.nik,
+                penjualInfo.persetujuan && penjualInfo.persetujuan.nik,
+            ].filter(Boolean);
+
+            const candidateNames = [
+                penjualInfo.pt_representative,
+                penjualInfo.penjual_perorangan && penjualInfo.penjual_perorangan.nama,
+                penjualInfo.persetujuan && penjualInfo.persetujuan.nama,
+            ].filter(Boolean);
+
+            for (const [key, pt] of Object.entries(PPAT.ptDatabase)) {
+                if (Array.isArray(pt.persetujuan)) {
+                    const hasNikMatch = candidateNiks.some((nik) =>
+                        pt.persetujuan.some((p) => p.nik && p.nik === nik)
+                    );
+                    const hasNameMatch = candidateNames.some((rawName) => {
+                        const repNorm = PPAT.ptMatcher ? PPAT.ptMatcher.normalizeName(rawName) : "";
+                        if (repNorm.length <= 3) return false;
+                        return pt.persetujuan.some((p) => {
+                            const pNorm = PPAT.ptMatcher ? PPAT.ptMatcher.normalizeName(p.nama) : "";
+                            return pNorm.includes(repNorm) || repNorm.includes(pNorm);
+                        });
+                    });
+                    if (hasNikMatch || hasNameMatch) {
+                        matchedKey = key;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const isPtSeller = Boolean(penjualInfo.is_pt || penjualInfo.pt_name || matchedKey);
+
+        // ---------------------------------------------------------------------
+        // KASUS 1: Penjual PT (Badan Hukum) — Prioritas Utama bila terdeteksi PT
+        // ---------------------------------------------------------------------
+        if (isPtSeller) {
+            if (cardPenjualPerorangan) cardPenjualPerorangan.classList.add("hidden");
+
+            if (matchedKey && PPAT.ptDatabase[matchedKey]) {
+                const ptEntry = PPAT.ptDatabase[matchedKey];
+
+                // 1. Pilih nama PT di dropdown panel & render daftar pihak persetujuan
+                if (selectPt) selectPt.value = matchedKey;
+                if (listPersetujuan) renderPersetujuanList(listPersetujuan, matchedKey);
+
+                updateStatus(`⏳ ${prefix}Terdeteksi PT: ${ptEntry.penjual.nama}. Mengisi form PT Penjual (Badan Hukum)...`, "info");
+
+                const shouldAutoUploadDocs = isAutoUploadPtDocs();
+
+                // 2. Isi form penjual PT (Badan Hukum, BUMS, PT) ke website ATR/BPN
+                await PPAT.penjualFiller.fill(ptEntry.penjual, {
+                    autoSubmit: isAutoSubmit(),
+                    autoUploadDocs: shouldAutoUploadDocs,
+                });
+
+                // 3. Jeda untuk memastikan form submit PT selesai di DOM
+                await PPAT.dom.delay(1000);
+
+                // JIKA autoUploadDocs aktif:
+                // penjualUploadFiller.runAutoUpload SUDAH mengisi dan mengunggah SELURUH pihak persetujuan PT
+                // serta menampilkan notifikasi alert hasil upload.
+                // JANGAN tambahkan lagi pihak persetujuan apapun agar tidak terjadi duplikasi!
+                if (shouldAutoUploadDocs) {
+                    console.log("[Panel] Auto-upload berkas PT aktif: Seluruh pihak persetujuan PT telah selesai diisikan dan diunggah. Tidak menambahkan pihak persetujuan lagi.");
+                    updateStatus(
+                        `✔ ${prefix}Penjual PT (${ptEntry.penjual.nama}) & seluruh berkas/persetujuan berhasil diproses! Silakan klik 'Isi Ulang Form Pembeli' bila diperlukan.`,
+                        "ok"
+                    );
+                    return true;
+                }
+
+                // 4. Cari pihak persetujuan PT yang sesuai (HANYA jika autoUploadDocs TIDAK aktif)
+                let targetPersetujuan = null;
+                if (Array.isArray(ptEntry.persetujuan) && ptEntry.persetujuan.length > 0) {
+                    // a. Cocokkan berdasarkan NIK dari AJB jika ada
+                    if (penjualInfo.pt_nik) {
+                        targetPersetujuan = ptEntry.persetujuan.find((p) => p.nik === penjualInfo.pt_nik);
+                    }
+                    // b. Cocokkan berdasarkan nama perwakilan jika ada
+                    if (!targetPersetujuan && penjualInfo.pt_representative) {
+                        const repNorm = PPAT.ptMatcher.normalizeName(penjualInfo.pt_representative);
+                        targetPersetujuan = ptEntry.persetujuan.find((p) => {
+                            const pNorm = PPAT.ptMatcher.normalizeName(p.nama);
+                            return pNorm.includes(repNorm) || repNorm.includes(pNorm);
+                        });
+                    }
+                    // c. Fallback ke pihak persetujuan pertama
+                    if (!targetPersetujuan) {
+                        targetPersetujuan = ptEntry.persetujuan[0];
+                    }
+                }
+
+                // 5. Isi form Pihak Persetujuan PT ke website ATR/BPN jika belum ada di daftar
+                if (targetPersetujuan) {
+                    PPAT.selectedPersetujuan = targetPersetujuan;
+
+                    // Pastikan belum ada di web ATR/BPN
+                    const alreadyInWeb =
+                        PPAT.persetujuanFiller &&
+                        PPAT.persetujuanFiller.isPersonAlreadyInDaftar(targetPersetujuan.nama, targetPersetujuan.nik);
+
+                    if (alreadyInWeb) {
+                        console.log(`[Panel] Pihak Persetujuan PT (${targetPersetujuan.nama}) sudah tercatat di daftar ATR/BPN. Melewati penambahan.`);
+                        updateStatus(
+                            `✔ ${prefix}Penjual PT (${ptEntry.penjual.nama}) & Persetujuan (${targetPersetujuan.nama}) [Sudah Ada] terkonfirmasi!`,
+                            "ok"
+                        );
+                        return true;
+                    }
+
+                    updateStatus(`⏳ ${prefix}Mengisi form Pihak Persetujuan PT (${targetPersetujuan.nama})...`, "info");
+                    const setujuOk = await PPAT.persetujuanFiller.fill(targetPersetujuan, {
+                        autoSubmit: isAutoSubmit(),
+                        autoUploadDocs: false,
+                        ptName: ptEntry.penjual.nama,
+                    });
+                    const persetujuanInfoText = setujuOk ? ` & Persetujuan (${targetPersetujuan.nama})` : "";
+                    updateStatus(
+                        `✔ ${prefix}Penjual PT (${ptEntry.penjual.nama})${persetujuanInfoText} berhasil diisi! Silakan klik 'Isi Ulang Form Pembeli' bila diperlukan.`,
+                        "ok"
+                    );
+                } else {
+                    updateStatus(
+                        `✔ ${prefix}Penjual PT (${ptEntry.penjual.nama}) berhasil diisi. Tidak ada pihak persetujuan pada database.`,
+                        "ok"
+                    );
+                }
+                return true;
+            } else {
+                updateStatus(
+                    `⚠ ${prefix}Terdeteksi PT: ${ptName || "Badan Hukum"}, namun tidak cocok dengan database PT (pt-database.js). Silakan pilih PT manual di atas.`,
+                    "warn"
+                );
+                return false;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // KASUS 2: Penjual Perorangan (Hanya jika TIDAK ADA PT sama sekali)
+        // ---------------------------------------------------------------------
+        if (penjualInfo.penjual_perorangan) {
+            const pPerorangan = penjualInfo.penjual_perorangan;
+            const pPersetujuan = penjualInfo.persetujuan;
+            PPAT.activePenjualPerorangan = pPerorangan;
+            PPAT.activePersetujuanPerorangan = pPersetujuan;
+
+            if (cardPenjualPerorangan) {
+                renderPenjualPeroranganCard(els, pPerorangan, pPersetujuan);
+            }
+
+            updateStatus(`⏳ ${prefix}Penjual perorangan (${pPerorangan.nama}). Mengisi form penjual...`, "info");
+            await PPAT.penjualFiller.fillPerorangan(pPerorangan, {
+                autoSubmit: isAutoSubmit(),
+            });
+
+            let persetujuanInfoText = "";
+            if (pPersetujuan && pPersetujuan.nama) {
+                const alreadyInWeb =
+                    PPAT.persetujuanFiller &&
+                    PPAT.persetujuanFiller.isPersonAlreadyInDaftar(pPersetujuan.nama, pPersetujuan.nik);
+
+                if (alreadyInWeb) {
+                    console.log(`[Panel] Pihak Persetujuan perorangan (${pPersetujuan.nama}) sudah tercatat di daftar ATR/BPN. Melewati penambahan.`);
+                    persetujuanInfoText = ` & Persetujuan (${pPersetujuan.nama}) [Sudah Ada]`;
+                } else {
+                    await PPAT.dom.delay(800);
+                    updateStatus(`⏳ ${prefix}Mengisi data Pihak Persetujuan (${pPersetujuan.nama})...`, "info");
+                    const setujuOk = await PPAT.persetujuanFiller.fill(pPersetujuan, {
+                        autoSubmit: isAutoSubmit(),
+                        autoUploadDocs: false,
+                    });
+                    if (setujuOk) {
+                        persetujuanInfoText = ` & Persetujuan (${pPersetujuan.nama})`;
+                    }
+                }
+            }
+
+            updateStatus(
+                `✔ ${prefix}Penjual (${pPerorangan.nama})${persetujuanInfoText} berhasil diisi! Silakan klik 'Isi Ulang Form Pembeli' bila diperlukan.`,
+                "ok"
+            );
+            return true;
+        }
+
+        return false;
+    }
+
     // -------------------------------------------------------------------------
     // Deteksi PT otomatis dari halaman web
     // -------------------------------------------------------------------------
@@ -358,7 +589,7 @@ PPAT.panel = (() => {
                     const resp = await fetch(url, { method: "POST", body: formData });
                     const json = await resp.json();
                     if (resp.ok && json.success) {
-                        progressState[key] = { ok: true, data: json.data, akta: json.akta };
+                        progressState[key] = { ok: true, data: json.data, akta: json.akta, penjual: json.penjual };
                     } else {
                         progressState[key] = { ok: false, error: json.error || json.message || "Gagal diproses" };
                     }
@@ -376,6 +607,7 @@ PPAT.panel = (() => {
             lastBatchResults = {
                 pembeli: progressState.pembeli?.data,
                 akta: progressState.pembeli?.akta,
+                penjual: progressState.pembeli?.penjual,
                 sertipikat: progressState.sertipikat?.data,
                 bphtb: progressState.bphtb?.data,
                 pph: progressState.pph?.data,
@@ -456,7 +688,7 @@ PPAT.panel = (() => {
             }
 
             // =========================================================================
-            // TAHAP 2: Akta & Pembeli
+            // TAHAP 2: Akta, Penjual & Pembeli
             // =========================================================================
             if (results.akta && (results.akta.nomor_akta || results.akta.tanggal_akta)) {
                 setBatchStatus("⏳ [2/4] Menyimpan Nomor & Tanggal Akta...", "info");
@@ -464,6 +696,14 @@ PPAT.panel = (() => {
                     await PPAT.aktaFiller.fill(results.akta, { autoSubmit: true });
                 }
                 await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 250);
+            }
+
+            if (results.penjual) {
+                setBatchStatus("⏳ [2/4] Memproses data Penjual & Pihak Persetujuan...", "info");
+                await autoFillPenjualAndPersetujuan(results.penjual, els, (msg, type) => {
+                    setBatchStatus(`[2/4] ${msg}`, type);
+                });
+                await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 300);
             }
 
             if (results.pembeli) {
@@ -604,6 +844,7 @@ PPAT.panel = (() => {
             btnFillPenjualPerorangan,
             btnFillPersetujuanPerorangan,
             selectPt,
+            listPersetujuan,
         } = els;
 
         if (!dropzoneAkta || !inputAkta) return;
@@ -624,21 +865,6 @@ PPAT.panel = (() => {
             if (aktaNomor) aktaNomor.textContent = (akta && akta.nomor_akta) || data.nomor_akta || "-";
             if (aktaTanggal) aktaTanggal.textContent = (akta && akta.tanggal_akta) || data.tanggal_akta || "-";
             cardPembeli.classList.remove("hidden");
-        };
-
-        const renderPenjualPeroranganCard = (pPerorangan, pPersetujuan) => {
-            if (!cardPenjualPerorangan) return;
-            if (penjualPeroranganNama) penjualPeroranganNama.textContent = (pPerorangan && pPerorangan.nama) || "-";
-            if (penjualPeroranganNik) penjualPeroranganNik.textContent = (pPerorangan && pPerorangan.nik) || "-";
-            if (persetujuanPeroranganNama) {
-                persetujuanPeroranganNama.textContent =
-                    (pPersetujuan && pPersetujuan.nama) ? pPersetujuan.nama : "(Tidak Ada)";
-            }
-            if (btnFillPersetujuanPerorangan) {
-                btnFillPersetujuanPerorangan.style.display =
-                    (pPersetujuan && pPersetujuan.nama) ? "block" : "none";
-            }
-            cardPenjualPerorangan.classList.remove("hidden");
         };
 
         const handlePdfFile = async (file) => {
@@ -682,55 +908,11 @@ PPAT.panel = (() => {
                         aktaStatusPrefix = `Akta No. ${aktaData.nomor_akta || "-"} (${aktaData.tanggal_akta || "-"}) tersimpan. `;
                     }
 
-                    // 2. Cek Data Penjual (PT vs Perorangan)
+                    // 2. Otomatisasi Pengisian Penjual (PT atau Perorangan) beserta Pihak Persetujuan
                     const penjualInfo = result.penjual;
-                    if (penjualInfo && !penjualInfo.is_pt && penjualInfo.penjual_perorangan) {
-                        const pPerorangan = penjualInfo.penjual_perorangan;
-                        const pPersetujuan = penjualInfo.persetujuan;
-                        PPAT.activePenjualPerorangan = pPerorangan;
-                        PPAT.activePersetujuanPerorangan = pPersetujuan;
-
-                        renderPenjualPeroranganCard(pPerorangan, pPersetujuan);
-
-                        setUploadStatus(`⏳ ${aktaStatusPrefix}Penjual perorangan (${pPerorangan.nama}). Mengisi form penjual...`, "info");
-
-                        // Isi Form Penjual Perorangan
-                        await PPAT.penjualFiller.fillPerorangan(pPerorangan, {
-                            autoSubmit: isAutoSubmit(),
-                        });
-
-                        // Jika ada pihak persetujuan, isi Form Pihak Persetujuan
-                        let persetujuanInfoText = "";
-                        if (pPersetujuan && pPersetujuan.nama) {
-                            await PPAT.dom.delay(800);
-                            setUploadStatus(`⏳ ${aktaStatusPrefix}Mengisi data Pihak Persetujuan (${pPersetujuan.nama})...`, "info");
-                            const setujuOk = await PPAT.persetujuanFiller.fill(pPersetujuan, {
-                                autoSubmit: isAutoSubmit(),
-                                autoUploadDocs: false,
-                            });
-                            if (setujuOk) {
-                                persetujuanInfoText = ` & Persetujuan (${pPersetujuan.nama})`;
-                            }
-                        }
-
-                        setUploadStatus(
-                            `✔ ${aktaStatusPrefix}Penjual (${pPerorangan.nama})${persetujuanInfoText} berhasil diisi! Silakan klik 'Isi Ulang Form Pembeli' bila diperlukan.`,
-                            "ok"
-                        );
-                    } else {
-                        // Jika penjual adalah PT (Badan Hukum)
-                        if (cardPenjualPerorangan) cardPenjualPerorangan.classList.add("hidden");
-
-                        if (penjualInfo && penjualInfo.pt_name && PPAT.ptMatcher) {
-                            const matchedKey = PPAT.ptMatcher.findPtKeyByName(penjualInfo.pt_name);
-                            if (matchedKey && selectPt) {
-                                selectPt.value = matchedKey;
-                                selectPt.dispatchEvent(new Event("change"));
-                                setUploadStatus(`✔ ${aktaStatusPrefix}Terdeteksi PT: ${penjualInfo.pt_name}. Mengisi form PT...`, "ok");
-                                return;
-                            }
-                        }
-                        setUploadStatus(`✔ ${aktaStatusPrefix}Silakan pilih pihak penjual (PT) di atas.`, "ok");
+                    const filled = await autoFillPenjualAndPersetujuan(penjualInfo, els, setUploadStatus, aktaStatusPrefix);
+                    if (!filled) {
+                        setUploadStatus(`✔ ${aktaStatusPrefix}Silakan pilih pihak penjual di atas bila belum terisi.`, "ok");
                     }
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";

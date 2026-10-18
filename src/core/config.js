@@ -62,7 +62,7 @@ PPAT.config = Object.freeze({
             tipeUsaha: "#frmInput1BadanHukum select#tipeusaha",
             // [selector input, properti pada data penjual]
             fields: [
-                ["#tNAMA_LENGKAPPihak1", "nama"],
+                ["#frmInput1BadanHukum #tNAMA_LENGKAPPihak1", "nama"],
                 ["#frmInput1BadanHukum #tALAMAT", "alamat"],
                 ["#frmInput1BadanHukum #tLOKASI", "kota"],
                 ["#frmInput1BadanHukum #tNPWP", "npwp"],

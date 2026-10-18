@@ -142,10 +142,64 @@ PPAT.persetujuanFiller = (() => {
         }, data.nik, data.nama, data.tempat_lahir, data.tgl_lahir, data.alamat, data.pekerjaan);
     }
 
+    /**
+     * Memeriksa apakah seorang pihak persetujuan (berdasarkan Nama atau NIK) sudah ada di daftar ATR/BPN.
+     * @param {string} name
+     * @param {string} [nik]
+     * @returns {boolean}
+     */
+    function isPersonAlreadyInDaftar(name, nik) {
+        const container = document.querySelector(
+            config.SELECTORS.persetujuan.daftarPlaceholder || "#daftarpemohonpihaksetujuplaceholder"
+        );
+        if (!container) return false;
+
+        // PENTING: Hanya periksa baris <li> atau <blockquote> di dalam daftar pihak persetujuan.
+        // Jangan periksa container.textContent langsung karena daftar kosong tetap berisi tag <script>.
+        const rows = container.querySelectorAll("li, blockquote.message");
+        if (!rows || rows.length === 0) return false;
+
+        const cleanNik = nik ? String(nik).replace(/[^0-9]/g, "") : "";
+        const cleanName = name ? String(name).trim().toLowerCase() : "";
+
+        for (const row of rows) {
+            const text = (row.textContent || "").toLowerCase();
+            if (cleanNik.length >= 10 && text.includes(cleanNik)) {
+                return true;
+            }
+            if (cleanName.length >= 3 && text.includes(cleanName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Memeriksa apakah seluruh pihak persetujuan dalam daftar (misal dari PT) sudah ada di ATR/BPN.
+     * @param {Array} list
+     * @returns {boolean}
+     */
+    function areAllPersetujuanInDaftar(list) {
+        if (!Array.isArray(list) || list.length === 0) return false;
+        return list.every((p) => isPersonAlreadyInDaftar(p.nama, p.nik));
+    }
+
     async function fill(data, options = {}) {
         const autoSubmit = options.autoSubmit ?? true;
+        const forceFill = options.forceFill ?? false;
 
         console.log(`[PersetujuanFiller] Memulai proses pengisian Pihak Persetujuan: '${data.nama}' (NIK: ${data.nik})...`);
+
+        // Cek apakah pihak persetujuan ini sudah terdaftar di web ATR/BPN
+        const alreadyInDaftar = isPersonAlreadyInDaftar(data.nama, data.nik);
+        if (alreadyInDaftar) {
+            console.log(`[PersetujuanFiller] Pihak Persetujuan '${data.nama}' (NIK: ${data.nik || "-"}) SUDAH TERCATAT di daftar web ATR/BPN.`);
+            if (autoSubmit || !forceFill) {
+                console.log("[PersetujuanFiller] Pengisian dihentikan demi mencegah penambahan data ganda ke web ATR/BPN.");
+                return true;
+            }
+        }
 
         // 1. Pastikan form siap tanpa memicu AJAX reload yang mereset form
         const form = await ensurePersetujuanForm();
@@ -205,6 +259,12 @@ PPAT.persetujuanFiller = (() => {
                 return false;
             }
 
+            // Cek sekali lagi apakah orang ini sudah muncul di daftar sesaat sebelum klik submit
+            if (isPersonAlreadyInDaftar(data.nama, data.nik)) {
+                console.log(`[PersetujuanFiller] Pihak Persetujuan '${data.nama}' terdeteksi sudah masuk ke daftar. Tombol Tambah tidak ditekan.`);
+                return true;
+            }
+
             const submitBtn = document.querySelector(S.btnTambah);
             if (!submitBtn) {
                 console.warn("[PersetujuanFiller] Tombol Tambah Pihak Persetujuan tidak ditemukan di DOM.");
@@ -213,13 +273,12 @@ PPAT.persetujuanFiller = (() => {
 
             console.log("[PersetujuanFiller] Seluruh field (NIK, Nama, Tempat Lahir, Tanggal Lahir) terisi valid. Menekan tombol Tambah Pihak Persetujuan...");
 
-            // Klik tombol submit via Page Context agar event form jQuery terpanggil dengan sempurna
             dom.runInPageContext((btnSel) => {
                 const btn = document.querySelector(btnSel);
                 if (btn) btn.click();
             }, S.btnTambah);
 
-            // Trigger click di content script sebagai pelengkap
+            // Klik submitBtn langsung di content script
             submitBtn.click();
 
             const autoUploadDocs = options.autoUploadDocs ?? false;
@@ -245,5 +304,7 @@ PPAT.persetujuanFiller = (() => {
         ensurePersetujuanForm,
         getFieldValues,
         isFormProperlyFilled,
+        isPersonAlreadyInDaftar,
+        areAllPersetujuanInDaftar,
     };
 })();
