@@ -69,6 +69,11 @@ PPAT.panelTemplate = (() => {
         pphTanggal: "ppat-pph-tanggal",
         btnFillPph: "ppat-btn-fill-pph",
         btnUploadPembeliDocs: "ppat-btn-upload-pembelidocs",
+        statusSaksi: "ppat-status-saksi",
+        cardDetectedSaksi: "ppat-card-detected-saksi",
+        saksi1Nama: "ppat-saksi-1-nama",
+        saksi2Nama: "ppat-saksi-2-nama",
+        btnFillAutoSaksi: "ppat-btn-fill-auto-saksi",
     });
 
     const HTML = `
@@ -327,10 +332,23 @@ PPAT.panelTemplate = (() => {
                         <span class="ppat-section-badge">7</span>
                         <div class="ppat-section-heading">
                             <span class="ppat-section-title">Pihak Saksi</span>
-                            <span class="ppat-section-hint">Klik nama untuk langsung isi</span>
+                            <span class="ppat-section-hint">Dari Akta AJB & Saksi Database</span>
                         </div>
                     </div>
                     <div class="ppat-section-body">
+                        <div id="${IDS.statusSaksi}" class="ppat-status hidden" style="margin-bottom:8px;"></div>
+                        <div id="${IDS.cardDetectedSaksi}" class="ppat-person-card hidden" style="margin-bottom:8px;">
+                            <div class="ppat-person-card-header">
+                                <span class="ppat-person-name">2 Saksi Terdeteksi dari AJB</span>
+                                <span class="ppat-person-badge" style="background:#0d9488;">Auto</span>
+                            </div>
+                            <div class="ppat-person-meta">Saksi 1: <b id="${IDS.saksi1Nama}">-</b></div>
+                            <div class="ppat-person-meta">Saksi 2: <b id="${IDS.saksi2Nama}">-</b></div>
+                            <button id="${IDS.btnFillAutoSaksi}" class="ppat-btn-fill" style="margin-top:8px; background:#0d9488;" title="Isi otomatis 2 saksi dan upload berkas KTP">
+                                ⚡ Isi 2 Saksi & Upload KTP
+                            </button>
+                        </div>
+                        <div style="font-size:11px; color:#64748b; margin-bottom:4px; font-weight:500;">Pilih manual dari database:</div>
                         <ul id="${IDS.listSaksi}" class="ppat-person-list"></ul>
                     </div>
                 </div>

@@ -774,6 +774,113 @@ pub fn parse_buyer_to_custom_json(raw_text: &str, custom_id: Option<&str>) -> Bu
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct SaksiOutput {
+    pub id: String,
+    pub nik: String,
+    pub nama: String,
+    pub alamat: String,
+    pub tempat_lahir: String,
+    pub tgl_lahir: String,
+    pub pekerjaan: String,
+    pub tipe_bukti: String,
+}
+
+pub fn get_saksi_database() -> Vec<SaksiOutput> {
+    vec![
+        SaksiOutput {
+            id: "1".to_string(),
+            nik: "3315166105990001".to_string(),
+            nama: "NURUL HIKMAH".to_string(),
+            alamat: "Rejosari, RT 003 / RW 003, Desa Botorejo, Kecamatan Wonosalam, Kabupaten Demak".to_string(),
+            tempat_lahir: "Grobogan".to_string(),
+            tgl_lahir: "21/05/1999".to_string(),
+            pekerjaan: "Wiraswasta".to_string(),
+            tipe_bukti: "1".to_string(),
+        },
+        SaksiOutput {
+            id: "2".to_string(),
+            nik: "3321046311970003".to_string(),
+            nama: "NOVIA MAHARSARI".to_string(),
+            alamat: "Dukuh Ngobongan, RT 003 / RW 003, Desa Tanjungsekar, Kecamatan Pucakwangi, Kabupaten Pati".to_string(),
+            tempat_lahir: "Semarang".to_string(),
+            tgl_lahir: "23/11/1997".to_string(),
+            pekerjaan: "Pelajar / Mahasiswa".to_string(),
+            tipe_bukti: "1".to_string(),
+        },
+        SaksiOutput {
+            id: "3".to_string(),
+            nik: "3404021708990001".to_string(),
+            nama: "RIDHWAN NUR CAHYO SAPUTRO".to_string(),
+            alamat: "Jetis Prenggan, RT 001/RW 018, Desa Sidokarto, Kecamatan Godean, Kabupaten Sleman".to_string(),
+            tempat_lahir: "Sleman".to_string(),
+            tgl_lahir: "17/08/1999".to_string(),
+            pekerjaan: "Pelajar / Mahasiswa".to_string(),
+            tipe_bukti: "1".to_string(),
+        },
+        SaksiOutput {
+            id: "4".to_string(),
+            nik: "3321040608940002".to_string(),
+            nama: "MUHAMMAD RIEFKY ABDILLAH".to_string(),
+            alamat: "Jl. Kapas Timur VIII D G.1061, RT 004/RW 008, Kelurahan Gebangsari, Kecamatan Genuk, Kota Semarang".to_string(),
+            tempat_lahir: "Demak".to_string(),
+            tgl_lahir: "06/08/1994".to_string(),
+            pekerjaan: "Karyawan Swasta".to_string(),
+            tipe_bukti: "1".to_string(),
+        },
+    ]
+}
+
+/// Mengekstrak dan mencocokkan 2 saksi dari teks akta AJB
+pub fn extract_saksi_from_text(text: &str) -> Vec<SaksiOutput> {
+    let clean = clean_text(text).to_uppercase();
+    let db = get_saksi_database();
+    let mut matched = Vec::new();
+
+    // 1. Cek kecocokan nama atau NIK masing-masing saksi
+    for s in &db {
+        let name_upper = s.nama.to_uppercase();
+        let tokens: Vec<&str> = name_upper.split_whitespace().collect();
+        let mut found = false;
+
+        if clean.contains(&name_upper) || (!s.nik.is_empty() && clean.contains(&s.nik)) {
+            found = true;
+        } else if tokens.len() >= 2 {
+            if clean.contains(tokens[0]) && clean.contains(tokens[1]) {
+                found = true;
+            }
+        }
+
+        if found && !matched.contains(s) {
+            matched.push(s.clone());
+        }
+    }
+
+    // 2. Jika hanya ketemu 1 saksi, lengkapi pasangannya secara otomatis
+    if matched.len() == 1 {
+        let first_id = &matched[0].id;
+        if first_id == "1" {
+            if let Some(s2) = db.iter().find(|s| s.id == "2") {
+                matched.push(s2.clone());
+            }
+        } else if first_id == "2" {
+            if let Some(s1) = db.iter().find(|s| s.id == "1") {
+                matched.insert(0, s1.clone());
+            }
+        } else if first_id == "3" {
+            if let Some(s4) = db.iter().find(|s| s.id == "4") {
+                matched.insert(0, s4.clone());
+            }
+        } else if first_id == "4" {
+            if let Some(s3) = db.iter().find(|s| s.id == "3") {
+                matched.push(s3.clone());
+            }
+        }
+    }
+
+    matched
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -66,7 +66,7 @@
         }
         isUploadInProgress = true;
 
-        const { base64, filename, mimeType, tipeValue } = data || {};
+        const { base64, filename, mimeType, tipeValue, requestId } = data || {};
         console.log(`[PageBridge] Menerima berkas upload: ${filename} (tipe: ${tipeValue})`);
 
         try {
@@ -131,6 +131,7 @@
 
             if (!window.idreferensi2 || !window.pihak2) {
                 const pUrl =
+                    document.querySelector("#daftarpemohonsaksiplaceholder p.url[data-refid]") ||
                     document.querySelector("#daftarpihak2placeholder p.url[data-refid]") ||
                     document.querySelector("#daftarpemohonpihaksetujuplaceholder p.url[data-refid]") ||
                     document.querySelector("#daftarpihak1placeholder p.url[data-refid]");
@@ -167,10 +168,10 @@
                 }
             }
 
-            sendResponse({ success: true, filename });
+            sendResponse({ success: true, filename, requestId });
         } catch (err) {
             console.error("[PageBridge] Gagal memproses upload berkas:", err);
-            sendResponse({ success: false, error: err.message || String(err) });
+            sendResponse({ success: false, error: err.message || String(err), requestId });
         } finally {
             isUploadInProgress = false;
         }

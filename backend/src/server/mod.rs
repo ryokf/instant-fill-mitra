@@ -37,9 +37,12 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         // Pembeli Documents (KK, KTP, PBB, BPHTB, PPh)
         .route("/api/pembeli-files-info", get(handlers::get_pembeli_files_info_handler))
         .route("/api/pembeli-file", get(handlers::get_pembeli_file_download_handler))
-        .route("/api/pembeli-file-download", get(handlers::get_pembeli_file_download_handler))
         .route("/api/extract-pembeli-bphtb", get(handlers::extract_pembeli_bphtb_handler))
         .route("/api/extract-pembeli-pph", get(handlers::extract_pembeli_pph_handler))
+        // Saksi Documents (KTP Saksi G:\My Drive\notaris bu sri\Saksi)
+        .route("/api/saksi-files-info", get(handlers::get_saksi_files_info_handler))
+        .route("/api/saksi-file", get(handlers::get_saksi_file_download_handler))
+        .route("/api/saksi-file-download", get(handlers::get_saksi_file_download_handler))
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max upload
         .layer(cors);
 

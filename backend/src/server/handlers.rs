@@ -155,6 +155,7 @@ pub async fn extract_pembeli_handler(multipart: Multipart) -> Response {
                     "data": crop_result.buyer_info,
                     "akta": crop_result.akta_info,
                     "penjual": crop_result.penjual_info,
+                    "saksi": crop_result.saksi,
                     "meta": {
                         "page_number": crop_result.page_number,
                         "total_pages": crop_result.total_pages,
@@ -755,6 +756,113 @@ pub async fn extract_pembeli_pph_handler(Query(query): Query<PembeliInfoQuery>) 
             Json(json!({
                 "success": false,
                 "error": format!("Gagal mengekstrak data PPh dari '{}': {}", filename, err_msg)
+            })),
+        ).into_response(),
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Handler: Info & Download File KTP Saksi (G:\My Drive\notaris bu sri\Saksi)
+// -----------------------------------------------------------------------------
+#[derive(Deserialize)]
+pub struct SaksiFileQuery {
+    pub name: Option<String>,
+    pub base_dir: Option<String>,
+}
+
+pub async fn get_saksi_files_info_handler(Query(query): Query<SaksiFileQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(crate::services::saksi_files::DEFAULT_SAKSI_DIR);
+    let search_name = query.name.as_deref().unwrap_or("");
+
+    println!("[API: Saksi Info] Mencari berkas KTP saksi untuk query '{}' di '{}'...", search_name, base_dir);
+
+    match crate::services::saksi_files::find_saksi_ktp_file(base_dir, search_name) {
+        Some((filename, filepath, size)) => {
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "found": true,
+                    "filename": filename,
+                    "file_path": filepath.display().to_string(),
+                    "size": size,
+                })),
+            ).into_response()
+        }
+        None => {
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "found": false,
+                    "filename": null,
+                    "file_path": null,
+                    "size": null,
+                })),
+            ).into_response()
+        }
+    }
+}
+
+pub async fn get_saksi_file_download_handler(Query(query): Query<SaksiFileQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(crate::services::saksi_files::DEFAULT_SAKSI_DIR);
+    let search_name = query.name.as_deref().unwrap_or("");
+
+    println!("[API: Saksi Download] Mengunduh berkas KTP saksi untuk query '{}' di '{}'...", search_name, base_dir);
+
+    let doc_match = crate::services::saksi_files::find_saksi_ktp_file(base_dir, search_name);
+    let (filename, filepath, _size) = match doc_match {
+        Some(m) => m,
+        None => {
+            let msg = format!("Berkas KTP saksi untuk query '{}' tidak ditemukan di '{}'", search_name, base_dir);
+            eprintln!("[API: Saksi Download] Gagal: {}", msg);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    let bytes = match tokio::fs::read(&filepath).await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("Gagal membaca berkas '{}': {}", filepath.display(), e);
+            eprintln!("[API: Saksi Download] Error I/O: {}", msg);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": msg
+                })),
+            ).into_response();
+        }
+    };
+
+    println!("[API: Saksi Download] Berhasil menyajikan berkas '{}' ({} bytes)", filename, bytes.len());
+
+    let content_type = if filename.to_uppercase().ends_with(".PDF") {
+        "application/pdf"
+    } else {
+        "application/octet-stream"
+    };
+
+    let builder = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_DISPOSITION, format!("inline; filename=\"{}\"", filename))
+        .header("x-file-name", filename)
+        .header("access-control-expose-headers", "Content-Disposition, X-File-Name");
+
+    match builder.body(Body::from(bytes)) {
+        Ok(resp) => resp,
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "error": format!("Gagal membangun respons: {}", e)
             })),
         ).into_response(),
     }

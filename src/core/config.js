@@ -13,6 +13,8 @@ PPAT.config = Object.freeze({
     PEMBELI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pembeli-file",
     EXTRACT_PEMBELI_BPHTB_URL: "http://127.0.0.1:3001/api/extract-pembeli-bphtb",
     EXTRACT_PEMBELI_PPH_URL: "http://127.0.0.1:3001/api/extract-pembeli-pph",
+    SAKSI_FILE_INFO_URL: "http://127.0.0.1:3001/api/saksi-files-info",
+    SAKSI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/saksi-file",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -119,9 +121,13 @@ PPAT.config = Object.freeze({
         }),
 
         saksi: Object.freeze({
+            container: "#inputSaksiplaceholder",
             form: "#frmSaksiDukcapil",
             btnTambah: "#btn-tambahSaksiNIK",
-            tipeBukti: "#frmSaksiDukcapil select#tipebuktisaksi1",
+            tipeBukti: "#frmSaksiDukcapil select#tipebuktisaksi1, select#tipebuktisaksi1",
+            daftarPlaceholder: "#daftarpemohonsaksiplaceholder",
+            daftarItems: "#daftarpemohonsaksiplaceholder li",
+            btnUnggah: "#daftarpemohonsaksiplaceholder a[onclick*='unggahpihakakta']",
             fields: [
                 ["#tNIKsaksi", "nik"],
                 ["#tNAMA_LENGKAPsaksi", "nama"],
@@ -129,6 +135,9 @@ PPAT.config = Object.freeze({
                 ["#tTEMPAT_LAHIRsaksi", "tempat_lahir"],
                 ["#tTANGGAL_LAHIRsaksi", "tgl_lahir"],
                 ["#tJENIS_PEKERJAANsaksi", "pekerjaan"],
+                ["#tNPWPsaksi", "npwp"],
+                ["#emailsaksi", "email"],
+                ["#nomorteleponsaksi", "telepon"],
             ],
         }),
 

@@ -21,6 +21,7 @@ pub struct CropResult {
     pub buyer_info: parser::BuyerJsonOutput,
     pub akta_info: parser::AktaInfo,
     pub penjual_info: parser::PenjualOutput,
+    pub saksi: Vec<parser::SaksiOutput>,
 }
 
 fn is_buyer_conclusion(text: &str) -> bool {
@@ -268,6 +269,35 @@ pub async fn process_akta_pdf(
         tanggal_akta: tanggal_akta.clone(),
     };
 
+    // Ekstraksi saksi dari teks dokumen dan sisa halaman penutup akta
+    let mut all_doc_text = String::new();
+    for (lines, _) in &pages_data {
+        all_doc_text.push_str(&lines.join("\n"));
+        all_doc_text.push('\n');
+    }
+
+    let mut saksi_list = parser::extract_saksi_from_text(&all_doc_text);
+
+    if saksi_list.len() < 2 {
+        for p_idx in (end_page_idx + 1)..total_pages {
+            if let Ok((up_img, _)) = render_and_prepare_page(&doc, p_idx as u32, scale).await {
+                if let Ok(lines) = run_ocr_on_image(&up_img, &engine).await {
+                    all_doc_text.push_str(&lines.join("\n"));
+                    all_doc_text.push('\n');
+                    let found = parser::extract_saksi_from_text(&all_doc_text);
+                    if found.len() >= 2 {
+                        saksi_list = found;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if saksi_list.len() < 2 {
+        saksi_list = parser::extract_saksi_from_text(&all_doc_text);
+    }
+
     // KASUS A: Seluruh data pembeli berada pada SATU halaman yang sama
     if let Some(start_line_idx) = start_line_same_page {
         let seller_raw_text = extract_seller_lines_until(&pages_data, end_page_idx, start_line_idx);
@@ -288,6 +318,7 @@ pub async fn process_akta_pdf(
             buyer_info,
             akta_info,
             penjual_info,
+            saksi: saksi_list,
         });
     }
 
@@ -356,6 +387,7 @@ pub async fn process_akta_pdf(
             buyer_info,
             akta_info,
             penjual_info,
+            saksi: saksi_list,
         });
     }
 

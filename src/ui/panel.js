@@ -32,6 +32,7 @@ PPAT.panel = (() => {
         setupSertipikatUpload(els);
         setupBphtbUpload(els);
         setupPphUpload(els);
+        setupSaksiControls(els);
         setupSertipikatWatcher(els);
 
         // Inisialisasi pemantau otomatis submit pembeli untuk upload KK & KTP
@@ -590,7 +591,7 @@ PPAT.panel = (() => {
                     const resp = await fetch(url, { method: "POST", body: formData });
                     const json = await resp.json();
                     if (resp.ok && json.success) {
-                        progressState[key] = { ok: true, data: json.data, akta: json.akta, penjual: json.penjual };
+                        progressState[key] = { ok: true, data: json.data, akta: json.akta, penjual: json.penjual, saksi: json.saksi };
                     } else {
                         progressState[key] = { ok: false, error: json.error || json.message || "Gagal diproses" };
                     }
@@ -609,6 +610,7 @@ PPAT.panel = (() => {
                 pembeli: progressState.pembeli?.data,
                 akta: progressState.pembeli?.akta,
                 penjual: progressState.pembeli?.penjual,
+                saksi: progressState.pembeli?.saksi,
                 sertipikat: progressState.sertipikat?.data,
                 bphtb: progressState.bphtb?.data,
                 pph: progressState.pph?.data,
@@ -623,6 +625,13 @@ PPAT.panel = (() => {
                 ) {
                     PPAT.pembeliUploadFiller.saveActiveBuyerName(lastBatchResults.pembeli.nama);
                 }
+            }
+            if (lastBatchResults.saksi) {
+                PPAT.activeSaksiData = lastBatchResults.saksi;
+                if (PPAT.saksiFiller && typeof PPAT.saksiFiller.saveSavedSaksi === "function") {
+                    PPAT.saksiFiller.saveSavedSaksi(lastBatchResults.saksi);
+                }
+                renderDetectedSaksiCard(els, lastBatchResults.saksi);
             }
             if (lastBatchResults.bphtb) {
                 PPAT.activeBphtbData = lastBatchResults.bphtb;
@@ -838,7 +847,7 @@ PPAT.panel = (() => {
             // TAHAP 4: PPh
             // =========================================================================
             if (results.pph) {
-                setBatchStatus("⏳ [4/4] Mengisi Form PPh (mencari suket & mengunggah berkas PPh otomatis)...", "info");
+                setBatchStatus("⏳ [4/5] Mengisi Form PPh (mencari suket & mengunggah berkas PPh otomatis)...", "info");
                 if (PPAT.pphFiller) {
                     await PPAT.pphFiller.fill(results.pph, {
                         autoSubmit: isAutoSubmit(),
@@ -846,9 +855,36 @@ PPAT.panel = (() => {
                         buyerName,
                     });
                 }
+                await PPAT.dom.delay(PPAT.config.TIMING.FORM_SETTLE_DELAY_MS + 300);
             }
 
-            setBatchStatus("✔ Seluruh form berhasil diisi & berkas PBB, BPHTB, PPh berhasil diunggah otomatis!", "ok");
+            // =========================================================================
+            // TAHAP 5: Pihak Saksi (Section M) & Upload KTP Saksi
+            // =========================================================================
+            let saksiList = results.saksi || PPAT.activeSaksiData;
+            if (!saksiList && PPAT.saksiFiller && typeof PPAT.saksiFiller.getSavedSaksi === "function") {
+                saksiList = await PPAT.saksiFiller.getSavedSaksi();
+            }
+
+            if (saksiList && Array.isArray(saksiList) && saksiList.length > 0) {
+                const saksiDone = PPAT.saksiFiller && PPAT.saksiFiller.areAllSaksiInDaftar(saksiList);
+                if (!saksiDone) {
+                    setBatchStatus("⏳ [5/5] Mengisi Form 2 Pihak Saksi & mengunggah berkas KTP saksi...", "info");
+                    if (PPAT.saksiFiller) {
+                        await PPAT.saksiFiller.fillAndUploadSaksiList(saksiList, {
+                            autoSubmit: isAutoSubmit(),
+                            autoUploadDocs: true,
+                            onStatus: (msg, type) => {
+                                setBatchStatus(`[5/5] ${msg}`, type);
+                            },
+                        });
+                    }
+                } else {
+                    setBatchStatus("✔ Seluruh Pihak Saksi sudah tercatat di sisi kanan.", "ok");
+                }
+            }
+
+            setBatchStatus("✔ Seluruh form berhasil diisi & berkas PBB, BPHTB, PPh, serta KTP Saksi berhasil diunggah!", "ok");
         };
 
         // Event listener klik dropzone
@@ -974,6 +1010,15 @@ PPAT.panel = (() => {
 
                     renderPembeliCard(result.data, aktaData);
 
+                    // Tangani data 2 saksi hasil ekstraksi akta AJB
+                    if (result.saksi && Array.isArray(result.saksi) && result.saksi.length > 0) {
+                        PPAT.activeSaksiData = result.saksi;
+                        if (PPAT.saksiFiller && typeof PPAT.saksiFiller.saveSavedSaksi === "function") {
+                            PPAT.saksiFiller.saveSavedSaksi(result.saksi);
+                        }
+                        renderDetectedSaksiCard(els, result.saksi);
+                    }
+
                     // 1. Ekstrak & isi Nomor dan Tanggal Akta ke Section A (Input Akta)
                     // Setelah semua kolom di section Input Akta terisi, klik tombol simpan secara otomatis
                     // dan tunggu modal notifikasi sampai tersimpan.
@@ -988,6 +1033,29 @@ PPAT.panel = (() => {
                     const filled = await autoFillPenjualAndPersetujuan(penjualInfo, els, setUploadStatus, aktaStatusPrefix);
                     if (!filled) {
                         setUploadStatus(`✔ ${aktaStatusPrefix}Silakan pilih pihak penjual di atas bila belum terisi.`, "ok");
+                    }
+
+                    // 3. Otomatisasi Saksi jika autoSubmit aktif
+                    if (result.saksi && Array.isArray(result.saksi) && result.saksi.length > 0 && isAutoSubmit() && PPAT.saksiFiller) {
+                        const saksiDone = PPAT.saksiFiller.areAllSaksiInDaftar(result.saksi);
+                        if (!saksiDone) {
+                            if (els.statusSaksi) {
+                                els.statusSaksi.classList.remove("hidden");
+                                els.statusSaksi.className = "ppat-status info";
+                                els.statusSaksi.textContent = "⏳ Mengisi form 2 Saksi & mengunggah berkas KTP saksi otomatis...";
+                            }
+                            await PPAT.saksiFiller.fillAndUploadSaksiList(result.saksi, {
+                                autoSubmit: true,
+                                autoUploadDocs: true,
+                                onStatus: (msg, type) => {
+                                    if (els.statusSaksi) {
+                                        els.statusSaksi.classList.remove("hidden");
+                                        els.statusSaksi.className = "ppat-status " + type;
+                                        els.statusSaksi.textContent = msg;
+                                    }
+                                },
+                            });
+                        }
                     }
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";
@@ -1579,11 +1647,47 @@ PPAT.panel = (() => {
                     els.statusPph.className = "ppat-status ok";
                     els.statusPph.textContent = "✔ Section PPh & berkas PPh berhasil diisi dan diunggah!";
                 }
+                await PPAT.dom.delay(500);
             }
 
-            if (bphtbData || pphData) {
+            // -----------------------------------------------------------------
+            // TAHAP 4: Pengisian Otomatis 2 Pihak Saksi + Upload KTP Saksi
+            // -----------------------------------------------------------------
+            let saksiData = PPAT.activeSaksiData;
+            if (!saksiData && PPAT.saksiFiller && typeof PPAT.saksiFiller.getSavedSaksi === "function") {
+                saksiData = await PPAT.saksiFiller.getSavedSaksi();
+                if (saksiData) PPAT.activeSaksiData = saksiData;
+            }
+
+            if (saksiData && Array.isArray(saksiData) && saksiData.length > 0 && PPAT.saksiFiller) {
+                const saksiDone = PPAT.saksiFiller.areAllSaksiInDaftar(saksiData);
+                if (!saksiDone) {
+                    updateAllStatus("⏳ [4/4] Mengisi otomatis 2 Pihak Saksi & mengunggah KTP saksi...", "info");
+                    if (els && els.statusSaksi) {
+                        els.statusSaksi.classList.remove("hidden");
+                        els.statusSaksi.className = "ppat-status info";
+                        els.statusSaksi.textContent = "⏳ Mengisi 2 Saksi & mengunggah KTP saksi...";
+                    }
+                    await PPAT.saksiFiller.fillAndUploadSaksiList(saksiData, {
+                        autoSubmit: true,
+                        autoUploadDocs: true,
+                        onStatus: (msg, type) => {
+                            updateAllStatus(`[Saksi] ${msg}`, type);
+                            if (els && els.statusSaksi) {
+                                els.statusSaksi.classList.remove("hidden");
+                                els.statusSaksi.className = "ppat-status " + type;
+                                els.statusSaksi.textContent = msg;
+                            }
+                        },
+                    });
+                } else {
+                    updateAllStatus("✔ Seluruh Pihak Saksi sudah tercatat di sisi kanan.", "ok");
+                }
+            }
+
+            if (bphtbData || pphData || saksiData) {
                 updateAllStatus(
-                    "✔ Otomatisasi selesai! Section Sertipikat, PBB, BPHTB, dan PPh beserta seluruh file berhasil diisi & diunggah!",
+                    "✔ Otomatisasi selesai! Section Sertipikat, PBB, BPHTB, PPh, dan Saksi beserta seluruh file berhasil diisi & diunggah!",
                     "ok"
                 );
             }
@@ -2010,6 +2114,64 @@ PPAT.panel = (() => {
                 setUploadStatus("⏳ Mengisi Form PPh & mengunggah berkas PPh...", "info");
                 const ok = await PPAT.pphFiller.fill(data, { autoSubmit: isAutoSubmit(), showAlert: false });
                 if (ok) setUploadStatus("✔ Form PPh berhasil diisi!", "ok");
+            });
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Kontrol & Tampilan Pihak Saksi (Section 7)
+    // -------------------------------------------------------------------------
+
+    function renderDetectedSaksiCard(els, saksiList) {
+        if (!els || !els.cardDetectedSaksi) return;
+        if (!Array.isArray(saksiList) || saksiList.length === 0) {
+            els.cardDetectedSaksi.classList.add("hidden");
+            return;
+        }
+        if (els.saksi1Nama) els.saksi1Nama.textContent = saksiList[0]?.nama || "-";
+        if (els.saksi2Nama) els.saksi2Nama.textContent = saksiList[1]?.nama || "-";
+        els.cardDetectedSaksi.classList.remove("hidden");
+    }
+
+    function setupSaksiControls(els) {
+        const { cardDetectedSaksi, btnFillAutoSaksi, statusSaksi } = els;
+
+        const setSaksiStatus = (text, type = "info") => {
+            if (!statusSaksi) return;
+            statusSaksi.classList.remove("hidden");
+            statusSaksi.className = "ppat-status " + type;
+            statusSaksi.textContent = text;
+        };
+
+        // Pulihkan data saksi tersimpan jika ada
+        if (PPAT.saksiFiller && typeof PPAT.saksiFiller.getSavedSaksi === "function") {
+            PPAT.saksiFiller.getSavedSaksi().then((saved) => {
+                if (saved && Array.isArray(saved) && saved.length > 0) {
+                    PPAT.activeSaksiData = saved;
+                    renderDetectedSaksiCard(els, saved);
+                }
+            });
+        }
+
+        if (btnFillAutoSaksi) {
+            btnFillAutoSaksi.addEventListener("click", async () => {
+                let saksiList = PPAT.activeSaksiData;
+                if (!saksiList && PPAT.saksiFiller && typeof PPAT.saksiFiller.getSavedSaksi === "function") {
+                    saksiList = await PPAT.saksiFiller.getSavedSaksi();
+                    if (saksiList) PPAT.activeSaksiData = saksiList;
+                }
+
+                if (!saksiList || !Array.isArray(saksiList) || saksiList.length === 0) {
+                    setSaksiStatus("Belum ada data saksi dari akta. Upload berkas Akta AJB terlebih dahulu.", "warn");
+                    return;
+                }
+
+                setSaksiStatus("⏳ Memulai pengisian form 2 saksi & upload KTP...", "info");
+                await PPAT.saksiFiller.fillAndUploadSaksiList(saksiList, {
+                    autoSubmit: isAutoSubmit(),
+                    autoUploadDocs: true,
+                    onStatus: (msg, type) => setSaksiStatus(msg, type),
+                });
             });
         }
     }
