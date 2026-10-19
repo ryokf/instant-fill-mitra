@@ -115,5 +115,48 @@ PPAT.dom = (() => {
         return true;
     }
 
-    return { waitForElement, delay, runInPageContext, fillField, fillFields, setSelect2Value };
+    /**
+     * Mengisi nilai pada elemen input (atau selector) dan memicu event input/change/blur
+     * baik di DOM maupun di jQuery Main World.
+     */
+    function setInputValue(elOrSelector, value) {
+        if (value === undefined || value === null) return;
+        const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector;
+        if (!el) return;
+
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.dispatchEvent(new Event("blur", { bubbles: true }));
+
+        if (el.id) {
+            runInPageContext(
+                (id, v) => {
+                    const target = document.getElementById(id);
+                    if (!target) return;
+                    target.value = v;
+                    if (window.jQuery) {
+                        window.jQuery(target).val(v).trigger("input").trigger("change").trigger("blur");
+                    }
+                },
+                el.id,
+                value,
+            );
+        } else if (el.name) {
+            runInPageContext(
+                (name, v) => {
+                    const target = document.querySelector(`input[name=${JSON.stringify(name)}]`);
+                    if (!target) return;
+                    target.value = v;
+                    if (window.jQuery) {
+                        window.jQuery(target).val(v).trigger("input").trigger("change").trigger("blur");
+                    }
+                },
+                el.name,
+                value,
+            );
+        }
+    }
+
+    return { waitForElement, delay, runInPageContext, fillField, fillFields, setSelect2Value, setInputValue };
 })();

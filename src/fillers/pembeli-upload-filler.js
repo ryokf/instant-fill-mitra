@@ -12,23 +12,97 @@ PPAT.pembeliUploadFiller = (() => {
     const processedBuyers = new Set();
     let watcherInitialized = false;
 
+    const BUYER_NAME_STORAGE_KEY = "ppat_saved_buyer_name";
+
+    /**
+     * Menyimpan nama pembeli aktif ke localStorage agar tetap tersedia lintas navigasi halaman.
+     */
+    function saveActiveBuyerName(name) {
+        const clean = (name || "").trim();
+        if (!clean || clean === "-") return;
+        try {
+            localStorage.setItem(BUYER_NAME_STORAGE_KEY, clean);
+        } catch (_) {}
+    }
+
     /**
      * Membaca nama Pembeli yang saat ini tercatat di baris Pihak 2 pada website ATR/BPN.
      * @returns {string|null}
      */
     function getActiveBuyerNameFromPage() {
-        const rows = document.querySelectorAll(`${S.daftarPlaceholder} li`);
+        const rows = document.querySelectorAll(`${S.daftarPlaceholder} li, ${S.daftarPlaceholder} tr, #daftarpihak2placeholder li, #daftarpihak2placeholder blockquote`);
         for (const row of rows) {
-            const bq = row.querySelector("blockquote");
-            if (bq) {
-                const text = bq.innerText || bq.textContent || "";
-                const match = text.match(/Nama\s*:\s*([^<\n\r]+)/i);
-                if (match && match[1]) {
-                    return match[1].trim();
+            const bq = row.querySelector("blockquote") || row;
+            // Di ATR/BPN baris teks di dalam blockquote dipisah oleh <br>.
+            // innerHTML dibersihkan dengan mengganti <br> menjadi \n agar tidak menyatu dengan field berikutnya (Alamat/NIK).
+            const rawHtml = bq.innerHTML || "";
+            const cleanText = rawHtml.replace(/<br\s*[\/]?>/gi, "\n").replace(/<[^>]+>/g, "");
+            const textToMatch = cleanText || bq.innerText || bq.textContent || "";
+            const match = textToMatch.match(/Nama\s*:\s*([^<\n\r]+)/i);
+            if (match && match[1]) {
+                let found = match[1].trim();
+                // Potong jika kata kunci berikutnya (Alamat / NIK / Email) masih terbawa
+                found = found.split(/Alamat\s*:|NIK\s*:|Email\s*:/i)[0].trim();
+                if (found && found !== "-") {
+                    saveActiveBuyerName(found);
+                    return found;
                 }
             }
         }
         return null;
+    }
+
+    /**
+     * Mendapatkan nama pembeli aktif dari berbagai sumber (memori, DOM daftar pihak 2, form input, panel, atau localStorage).
+     * @returns {string}
+     */
+    function getActiveBuyerName() {
+        const cleanName = (val) => {
+            if (!val || typeof val !== "string") return "";
+            let c = val.trim();
+            if (c === "-") return "";
+            c = c.split(/Alamat\s*:|NIK\s*:|Email\s*:/i)[0].trim();
+            return c;
+        };
+
+        const fromActive = PPAT.activePembeliData && PPAT.activePembeliData.nama ? cleanName(PPAT.activePembeliData.nama) : "";
+        if (fromActive) {
+            saveActiveBuyerName(fromActive);
+            return fromActive;
+        }
+
+        const fromPage = getActiveBuyerNameFromPage();
+        if (fromPage) return cleanName(fromPage);
+
+        const formInput = document.querySelector("#frmtipepihak2Dukcapil #tNAMA_LENGKAP");
+        if (formInput && formInput.value && formInput.value.trim()) {
+            const val = cleanName(formInput.value);
+            if (val) {
+                saveActiveBuyerName(val);
+                return val;
+            }
+        }
+
+        const cardEl = document.getElementById("ppat-pembeli-nama");
+        if (cardEl && cardEl.textContent && cardEl.textContent.trim() !== "-") {
+            const val = cleanName(cardEl.textContent);
+            if (val) return val;
+        }
+
+        try {
+            const saved = localStorage.getItem(BUYER_NAME_STORAGE_KEY);
+            if (saved && saved.trim()) {
+                const val = cleanName(saved);
+                if (val) return val;
+            }
+        } catch (_) {}
+
+        if (PPAT.activeBphtbData && PPAT.activeBphtbData.nama_wajib_pajak) {
+            const bphtbName = cleanName(PPAT.activeBphtbData.nama_wajib_pajak);
+            if (bphtbName && bphtbName !== "-") return bphtbName;
+        }
+
+        return "";
     }
 
     /**
@@ -57,7 +131,7 @@ PPAT.pembeliUploadFiller = (() => {
     }
 
     /**
-     * Mengunduh berkas KK / KTP Pembeli dari backend port 3001.
+     * Mengunduh berkas Pembeli (kk, ktp, pbb, bphtb, pph) dari backend port 3001.
      */
     async function downloadPembeliDocument(buyerName, docType) {
         const url = `${config.PEMBELI_FILE_DOWNLOAD_URL}?buyer_name=${encodeURIComponent(buyerName)}&doc_type=${encodeURIComponent(docType)}`;
@@ -72,13 +146,90 @@ PPAT.pembeliUploadFiller = (() => {
         }
 
         const fileNameHeader = resp.headers.get("x-file-name");
-        let defaultFilename = docType === "kk" ? "KK.pdf" : "KTP.pdf";
+        const docLower = (docType || "").toLowerCase();
+        let defaultFilename = "DOKUMEN.pdf";
+        if (docLower === "kk") defaultFilename = "KK.pdf";
+        else if (docLower === "ktp") defaultFilename = "KTP.pdf";
+        else if (docLower === "pbb") defaultFilename = "PBB.pdf";
+        else if (docLower === "bphtb") defaultFilename = "BPHTB.pdf";
+        else if (docLower === "pph") defaultFilename = "PPH.pdf";
+
         const filename = fileNameHeader || defaultFilename;
 
         const blob = await resp.blob();
         const base64 = await blobToBase64(blob);
 
-        return { filename, base64, blob };
+        return { filename, base64, blob, mimeType: blob.type || "application/pdf" };
+    }
+
+    /**
+     * Mengekstrak data PBB & BPHTB secara otomatis dari berkas BPHTB di folder Pihak Kedua\[nama pembeli].
+     */
+    async function extractBuyerBphtb(buyerName) {
+        const url = `${config.EXTRACT_PEMBELI_BPHTB_URL}?buyer_name=${encodeURIComponent(buyerName)}`;
+        const resp = await fetch(url);
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+            throw new Error(json.error || `Gagal mengekstrak BPHTB untuk '${buyerName}'`);
+        }
+        return json.data;
+    }
+
+    /**
+     * Mengekstrak data PPh secara otomatis dari berkas PPh di folder Pihak Kedua\[nama pembeli].
+     */
+    async function extractBuyerPph(buyerName) {
+        const url = `${config.EXTRACT_PEMBELI_PPH_URL}?buyer_name=${encodeURIComponent(buyerName)}`;
+        const resp = await fetch(url);
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+            throw new Error(json.error || `Gagal mengekstrak PPh untuk '${buyerName}'`);
+        }
+        return json.data;
+    }
+
+    /**
+     * Menginjeksi berkas dokumen (PBB / BPHTB / PPh) ke elemen input[type="file"]
+     * melalui Page Bridge (Main World).
+     */
+    function injectSectionFile(section, selector, docData) {
+        return new Promise((resolve) => {
+            if (!docData || !docData.base64) {
+                return resolve({ success: false, error: "Data berkas kosong." });
+            }
+
+            const requestId = `${section}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            const timeoutTimer = setTimeout(() => {
+                window.removeEventListener("message", onResponse);
+                resolve({ success: false, error: "Timeout menunggu respons injeksi file dari Page Bridge." });
+            }, 10000);
+
+            function onResponse(e) {
+                if (
+                    e.data &&
+                    e.data.type === "PPAT_INJECT_SECTION_FILE_RESPONSE" &&
+                    e.data.requestId === requestId
+                ) {
+                    window.removeEventListener("message", onResponse);
+                    clearTimeout(timeoutTimer);
+                    resolve(e.data);
+                }
+            }
+
+            window.addEventListener("message", onResponse);
+            window.postMessage(
+                {
+                    type: "PPAT_INJECT_SECTION_FILE",
+                    requestId,
+                    section,
+                    selector,
+                    base64: docData.base64,
+                    filename: docData.filename,
+                    mimeType: docData.mimeType || "application/pdf",
+                },
+                "*"
+            );
+        });
     }
 
     /**
@@ -599,11 +750,16 @@ PPAT.pembeliUploadFiller = (() => {
     }
 
     return {
+        saveActiveBuyerName,
+        getActiveBuyerName,
+        getActiveBuyerNameFromPage,
         fetchPembeliInfo,
         downloadPembeliDocument,
+        extractBuyerBphtb,
+        extractBuyerPph,
+        injectSectionFile,
         executePembeliUploadStep,
         runAutoUploadPembeli,
         initPembeliWatcher,
-        getActiveBuyerNameFromPage,
     };
 })();

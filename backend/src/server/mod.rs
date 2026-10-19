@@ -34,15 +34,16 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/pt-files-info", get(handlers::get_pt_files_info_handler))
         .route("/api/pt-file", get(handlers::get_pt_file_download_handler))
         .route("/api/pt-file-download", get(handlers::get_pt_file_download_handler))
-        // Pembeli Documents (KK & KTP)
+        // Pembeli Documents (KK, KTP, PBB, BPHTB, PPh)
         .route("/api/pembeli-files-info", get(handlers::get_pembeli_files_info_handler))
         .route("/api/pembeli-file", get(handlers::get_pembeli_file_download_handler))
         .route("/api/pembeli-file-download", get(handlers::get_pembeli_file_download_handler))
+        .route("/api/extract-pembeli-bphtb", get(handlers::extract_pembeli_bphtb_handler))
+        .route("/api/extract-pembeli-pph", get(handlers::extract_pembeli_pph_handler))
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max upload
         .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
 
     println!("=======================================================");
     println!("  ⚡ Service Backend Terpadu (AutoFill PPAT) Aktif!    ");
@@ -55,6 +56,22 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     println!("  5. PT Dokumen     : GET  /api/pt-file (Akta & NPWP) ");
     println!("=======================================================");
 
-    axum::serve(listener, app).await?;
+    loop {
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[Server Error] Gagal bind ke port {}: {}. Mencoba lagi dalam 1 detik...", port, e);
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+
+        if let Err(e) = axum::serve(listener, app.clone()).await {
+            eprintln!("[Server Error] axum::serve berhenti: {}. Merestart server dalam 500ms...", e);
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        } else {
+            break;
+        }
+    }
     Ok(())
 }

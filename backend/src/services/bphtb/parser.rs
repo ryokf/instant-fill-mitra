@@ -48,16 +48,25 @@ pub fn parse_bphtb_text(ocr_lines: &[String]) -> BphtbData {
 
     // 2. NOP (Nomor Objek Pajak PBB - 18 digit)
     let mut nop = String::new();
-    let re_nop = Regex::new(r"(?i)(?:NOP|PBB)[\s:.=•\-]*(\d{17,18})\b").unwrap();
-    if let Some(caps) = re_nop.captures(&raw_text) {
-        nop = caps[1].to_string();
-    } else {
-        let re_nop_loose = Regex::new(r"\b(33\d{16})\b").unwrap();
-        for line in ocr_lines {
-            if let Some(caps) = re_nop_loose.captures(line) {
-                nop = caps[1].to_string();
+    let re_nop_any = Regex::new(r"(33[0-9OolI\.\-\s]{16,26})").unwrap();
+    for line in ocr_lines {
+        for caps in re_nop_any.captures_iter(line) {
+            let cleaned: String = caps[1]
+                .chars()
+                .filter_map(|c| match c {
+                    '0'..='9' => Some(c),
+                    'O' | 'o' => Some('0'),
+                    'I' | 'l' => Some('1'),
+                    _ => None,
+                })
+                .collect();
+            if cleaned.len() >= 18 && cleaned.starts_with("33") {
+                nop = cleaned[..18].to_string();
                 break;
             }
+        }
+        if !nop.is_empty() {
+            break;
         }
     }
 
@@ -65,49 +74,57 @@ pub fn parse_bphtb_text(ocr_lines: &[String]) -> BphtbData {
     let mut luas_tanah: f64 = 0.0;
     let mut njop_m2: u64 = 0;
 
-    let re_item7 = Regex::new(r"(?:7[\.\,\s]+)(\d+(?:[\,\.]\d+)?)").unwrap();
-    let re_item9 = Regex::new(r"(?:9[\.\,\s]+)([\d\.\,]+)").unwrap();
+    let lower_raw = raw_text.to_lowercase();
+    let table_slice = if let Some(pos) = lower_raw.find("penghitungan") {
+        raw_text.get(pos..).unwrap_or(&raw_text[..])
+    } else if let Some(pos) = lower_raw.find("uraian") {
+        raw_text.get(pos..).unwrap_or(&raw_text[..])
+    } else if let Some(pos) = lower_raw.find("tanah") {
+        raw_text.get(pos..).unwrap_or(&raw_text[..])
+    } else {
+        &raw_text[..]
+    };
 
-    for line in ocr_lines {
-        let trimmed = line.trim();
-        if trimmed.starts_with('8') || trimmed.starts_with("10.") || trimmed.starts_with("12.") {
-            continue;
-        }
+    let re_item7_multi = Regex::new(r"(?:^|[\s:;])7[\.\,\:\s]+(\d{1,5}(?:[\,\.]\d{1,2})?)\s*(?:m|M|rn)").unwrap();
+    let re_item7_simple = Regex::new(r"(?:^|[\s:;])7[\.\,\:\s]+(\d{1,5}(?:[\,\.]\d{1,2})?)\b").unwrap();
+    let re_item9_multi = Regex::new(r"(?:^|[\s:;])9[\.\,\:\s]+(\d{1,3}(?:[\.\,]\d{3})+)(?:[\,\.]\d{2})?\b").unwrap();
 
-        if luas_tanah == 0.0 {
-            if let Some(caps) = re_item7.captures(trimmed) {
-                let num_str = caps[1].replace(',', ".");
-                if let Ok(v) = num_str.parse::<f64>() {
-                    if v > 0.0 && v < 1000000.0 {
-                        luas_tanah = v;
-                    }
-                }
+    if let Some(caps) = re_item7_multi.captures(table_slice).or_else(|| re_item7_simple.captures(table_slice)) {
+        let num_str = caps[1].replace(',', ".");
+        if let Ok(v) = num_str.parse::<f64>() {
+            if v > 0.0 && v < 100000.0 {
+                luas_tanah = v;
             }
         }
+    }
 
-        if njop_m2 == 0 {
-            if let Some(caps) = re_item9.captures(trimmed) {
-                let raw_val = &caps[1];
-                let normalized = if raw_val.contains(',') {
-                    let parts: Vec<&str> = raw_val.split(',').collect();
-                    parts[0].replace('.', "")
-                } else {
-                    raw_val.replace('.', "")
-                };
-                if let Ok(v) = normalized.parse::<u64>() {
-                    njop_m2 = v;
+    if let Some(caps) = re_item9_multi.captures(table_slice) {
+        let raw_val = &caps[1];
+        let normalized = raw_val.replace('.', "").replace(',', "");
+        if let Ok(v) = normalized.parse::<u64>() {
+            njop_m2 = v;
+        }
+    }
+
+    // Fallback luas tanah jika angka "7." terlewat oleh OCR (cari pola seperti "60,00 m" atau "60.00")
+    if luas_tanah == 0.0 {
+        let re_luas_fallback = Regex::new(r"(?i)\b(\d{2,4})[\,\.]00\s*(?:m2|m²|m'|m|rn)?\b").unwrap();
+        if let Some(caps) = re_luas_fallback.captures(table_slice) {
+            if let Ok(v) = caps[1].parse::<f64>() {
+                if v >= 10.0 && v <= 50000.0 {
+                    luas_tanah = v;
                 }
             }
         }
     }
 
-    // Fallback luas tanah jika baris "7." belum tertangkap
-    if luas_tanah == 0.0 {
-        let re_luas_fallback = Regex::new(r"(?i)Tanah\s*\(bumi\)[\s\S]{1,80}?(\d+(?:[\,\.]\d+)?)\s*(?:m|m2|m²|m')").unwrap();
-        if let Some(caps) = re_luas_fallback.captures(&raw_text) {
-            let num_str = caps[1].replace(',', ".");
-            if let Ok(v) = num_str.parse::<f64>() {
-                luas_tanah = v;
+    // Fallback njop_m2 jika angka "9." terlewat oleh OCR (cari pola ribuan seperti "48.000,00" atau "48.000.00")
+    if njop_m2 == 0 {
+        let re_njop_fallback = Regex::new(r"\b(\d{2,3}\.\d{3})[\,\.]00\b").unwrap();
+        if let Some(caps) = re_njop_fallback.captures(table_slice) {
+            let normalized = caps[1].replace('.', "");
+            if let Ok(v) = normalized.parse::<u64>() {
+                njop_m2 = v;
             }
         }
     }

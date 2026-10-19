@@ -11,6 +11,8 @@ PPAT.config = Object.freeze({
     PT_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pt-file",
     PEMBELI_FILES_INFO_URL: "http://127.0.0.1:3001/api/pembeli-files-info",
     PEMBELI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pembeli-file",
+    EXTRACT_PEMBELI_BPHTB_URL: "http://127.0.0.1:3001/api/extract-pembeli-bphtb",
+    EXTRACT_PEMBELI_PPH_URL: "http://127.0.0.1:3001/api/extract-pembeli-pph",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul
@@ -161,7 +163,7 @@ PPAT.config = Object.freeze({
 
         pbb: Object.freeze({
             container: "#inputPBBplaceholder",
-            dropdownSertifikat: "#alashakid",
+            dropdownSertifikat: "select#alashakid, #alashakplaceholder select, #inputPBBplaceholder select#alashakid",
             form: "#frmPBBDetail",
             luasSertifikat: "#luassertipikat",
             nilaiZnt: "#nilaiznt",

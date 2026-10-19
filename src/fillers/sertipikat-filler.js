@@ -842,25 +842,36 @@ PPAT.sertipikatFiller = (() => {
             const startTime = Date.now();
             const placeholder = document.querySelector(S_SERTIPIKAT.daftarPlaceholder || "#daftarhatplaceholder");
 
+            let interval = null;
             let observer = null;
+
+            const cleanup = () => {
+                if (observer) {
+                    try { observer.disconnect(); } catch (_) {}
+                    observer = null;
+                }
+                if (interval) {
+                    clearInterval(interval);
+                    interval = null;
+                }
+            };
+
             if (placeholder) {
                 observer = new MutationObserver(() => {
                     if (isSertifikatSaved()) {
-                        if (observer) observer.disconnect();
+                        cleanup();
                         resolve(true);
                     }
                 });
                 observer.observe(placeholder, { childList: true, subtree: true });
             }
 
-            const interval = setInterval(() => {
+            interval = setInterval(() => {
                 if (isSertifikatSaved()) {
-                    if (observer) observer.disconnect();
-                    clearInterval(interval);
+                    cleanup();
                     resolve(true);
                 } else if (Date.now() - startTime > timeoutMs) {
-                    if (observer) observer.disconnect();
-                    clearInterval(interval);
+                    cleanup();
                     resolve(false);
                 }
             }, 200);

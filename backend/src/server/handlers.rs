@@ -188,7 +188,7 @@ pub async fn extract_bphtb_handler(multipart: Multipart) -> Response {
     println!("[API: BPHTB] Memproses berkas BPHTB: {} ({} bytes)...", filename, bytes.len());
 
     let result = execute_winrt_task("bphtb_upload", &filename, &bytes, |path| async move {
-        process_bphtb_file(&path, 1.5).await
+        process_bphtb_file(&path, 2.5).await
     }).await;
 
     match result {
@@ -468,7 +468,7 @@ pub async fn get_pt_file_download_handler(Query(query): Query<PtDownloadQuery>) 
 }
 
 // -----------------------------------------------------------------------------
-// Handler: Info File Pembeli / Pihak Kedua (KK & KTP)
+// Handler: Info File Pembeli / Pihak Kedua (KK, KTP, PBB, BPHTB, PPh)
 // -----------------------------------------------------------------------------
 #[derive(Deserialize)]
 pub struct PembeliInfoQuery {
@@ -483,8 +483,8 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
     match pembeli_files::get_pembeli_info(base_dir, &query.buyer_name) {
         Ok(info) => {
             println!(
-                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}",
-                info.folder_name, info.kk.filename, info.ktp.filename
+                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}, PBB: {:?}, BPHTB: {:?}, PPh: {:?}",
+                info.folder_name, info.kk.filename, info.ktp.filename, info.pbb.filename, info.bphtb.filename, info.pph.filename
             );
             (
                 StatusCode::OK,
@@ -495,6 +495,9 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
                     "files": {
                         "kk": info.kk.filename,
                         "ktp": info.ktp.filename,
+                        "pbb": info.pbb.filename,
+                        "bphtb": info.bphtb.filename,
+                        "pph": info.pph.filename,
                     }
                 })),
             ).into_response()
@@ -513,12 +516,12 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
 }
 
 // -----------------------------------------------------------------------------
-// Handler: Download File Pembeli / Pihak Kedua (KK atau KTP)
+// Handler: Download File Pembeli / Pihak Kedua (KK, KTP, PBB, BPHTB, PPh)
 // -----------------------------------------------------------------------------
 #[derive(Deserialize)]
 pub struct PembeliDownloadQuery {
     pub buyer_name: String,
-    pub doc_type: String, // "kk" atau "ktp"
+    pub doc_type: String, // "kk", "ktp", "pbb", "bphtb", "pph"
     pub base_dir: Option<String>,
 }
 
@@ -612,6 +615,146 @@ pub async fn get_pembeli_file_download_handler(Query(query): Query<PembeliDownlo
             Json(json!({
                 "success": false,
                 "error": format!("Gagal membangun respons: {}", e)
+            })),
+        ).into_response(),
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Handler: Ekstrak Otomatis BPHTB dari Folder Pembeli (G:\My Drive\...\Pihak Kedua)
+// -----------------------------------------------------------------------------
+pub async fn extract_pembeli_bphtb_handler(Query(query): Query<PembeliInfoQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PEMBELI_DIR);
+    println!("[API: Buyer BPHTB] Mencari & mengekstrak berkas BPHTB untuk pembeli: '{}'", query.buyer_name);
+
+    let folder_match = match pembeli_files::find_pembeli_folder(base_dir, &query.buyer_name) {
+        Some(m) => m,
+        None => {
+            let msg = format!("Folder pihak kedua untuk '{}' tidak ditemukan di '{}'", query.buyer_name, base_dir);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "success": false, "error": msg })),
+            ).into_response();
+        }
+    };
+
+    let (filename, filepath, _) = match pembeli_files::find_pembeli_document(&folder_match.1, "bphtb") {
+        Some(m) => m,
+        None => {
+            let msg = format!("Berkas BPHTB tidak ditemukan di folder '{}'", folder_match.0);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "success": false, "error": msg })),
+            ).into_response();
+        }
+    };
+
+    let bytes = match tokio::fs::read(&filepath).await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("Gagal membaca berkas '{}': {}", filepath.display(), e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": msg })),
+            ).into_response();
+        }
+    };
+
+    let result = execute_winrt_task("buyer_bphtb", &filename, &bytes, |path| async move {
+        process_bphtb_file(&path, 2.5).await
+    }).await;
+
+    match result {
+        Ok(res) => {
+            println!(
+                "[API: Buyer BPHTB] Berhasil ({}) - NOP: {}, Luas: {}, NJOP: {}, No. Bukti: {}",
+                folder_match.0, res.data.nop, res.data.luas_tanah, res.data.njop_m2, res.data.nomor_bukti_pembayaran
+            );
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "folder": folder_match.0,
+                    "filename": filename,
+                    "data": res.data,
+                })),
+            ).into_response()
+        }
+        Err((code, err_msg)) => (
+            code,
+            Json(json!({
+                "success": false,
+                "error": format!("Gagal mengekstrak data BPHTB dari '{}': {}", filename, err_msg)
+            })),
+        ).into_response(),
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Handler: Ekstrak Otomatis PPh dari Folder Pembeli (G:\My Drive\...\Pihak Kedua)
+// -----------------------------------------------------------------------------
+pub async fn extract_pembeli_pph_handler(Query(query): Query<PembeliInfoQuery>) -> Response {
+    let base_dir = query.base_dir.as_deref().unwrap_or(DEFAULT_PEMBELI_DIR);
+    println!("[API: Buyer PPh] Mencari & mengekstrak berkas PPh untuk pembeli: '{}'", query.buyer_name);
+
+    let folder_match = match pembeli_files::find_pembeli_folder(base_dir, &query.buyer_name) {
+        Some(m) => m,
+        None => {
+            let msg = format!("Folder pihak kedua untuk '{}' tidak ditemukan di '{}'", query.buyer_name, base_dir);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "success": false, "error": msg })),
+            ).into_response();
+        }
+    };
+
+    let (filename, filepath, _) = match pembeli_files::find_pembeli_document(&folder_match.1, "pph") {
+        Some(m) => m,
+        None => {
+            let msg = format!("Berkas PPh tidak ditemukan di folder '{}'", folder_match.0);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "success": false, "error": msg })),
+            ).into_response();
+        }
+    };
+
+    let bytes = match tokio::fs::read(&filepath).await {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("Gagal membaca berkas '{}': {}", filepath.display(), e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": msg })),
+            ).into_response();
+        }
+    };
+
+    let result = execute_winrt_task("buyer_pph", &filename, &bytes, |path| async move {
+        process_pph_file(&path, 2.0).await
+    }).await;
+
+    match result {
+        Ok(res) => {
+            println!(
+                "[API: Buyer PPh] Berhasil ({}) - No Suket: {}, NPWP: {}, WP: {}",
+                folder_match.0, res.data.nomor_suket, res.data.npwp, res.data.nama_wp
+            );
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "folder": folder_match.0,
+                    "filename": filename,
+                    "data": res.data,
+                })),
+            ).into_response()
+        }
+        Err((code, err_msg)) => (
+            code,
+            Json(json!({
+                "success": false,
+                "error": format!("Gagal mengekstrak data PPh dari '{}': {}", filename, err_msg)
             })),
         ).into_response(),
     }

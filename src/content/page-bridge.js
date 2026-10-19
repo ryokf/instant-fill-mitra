@@ -242,11 +242,115 @@
         document.body.style.removeProperty("padding-right");
     }
 
+    /**
+     * Menginjeksi berkas (File) secara otomatis ke input[type="file"] pada section PBB, BPHTB, atau PPh
+     * di Main World (sehingga event change native & jQuery halaman menangkap e.target.files[0] secara utuh).
+     */
+    async function handleSectionFileInject(data) {
+        const { requestId, section, selector, base64, filename, mimeType } = data || {};
+        console.log(`[PageBridge] Menginjeksi berkas section '${section}': ${filename}`);
+
+        try {
+            let input = null;
+            if (selector) {
+                try {
+                    input = document.querySelector(selector);
+                } catch (_) {}
+            }
+
+            if (!input) {
+                if (section === "pbb") {
+                    input =
+                        document.getElementById("txtUploadFilePBB") ||
+                        document.querySelector("#frmPBBDetail input[type='file'], #inputPBBplaceholder input[type='file']");
+                } else if (section === "bphtb") {
+                    input =
+                        document.getElementById("txtUploadFileBPHTB") ||
+                        document.querySelector("#frmBPHTB input[type='file'], #inputBPHTBplaceholder input[type='file']");
+                } else if (section === "pph") {
+                    input =
+                        document.getElementById("txtUploadFilePPH") ||
+                        document.getElementById("txtUploadFilePPh") ||
+                        document.querySelector(
+                            "#frmPPH input[type='file'], #frmPph input[type='file'], #inputPPHplaceholder input[type='file'], #inputPPhplaceholder input[type='file'], #inputpphplaceholder input[type='file'], input[name*='UploadFilePPH' i], input[name*='UploadFromFilePPH' i]"
+                        );
+                }
+            }
+
+            if (!input) {
+                throw new Error(`Input file untuk section '${section}' tidak ditemukan di halaman.`);
+            }
+
+            // Decode base64 menjadi File di Main World
+            const byteChars = atob(base64);
+            const byteNums = new Uint8Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) {
+                byteNums[i] = byteChars.charCodeAt(i);
+            }
+            const resolvedMime = mimeType || (filename && filename.toLowerCase().endsWith(".png") ? "image/png" : filename && filename.toLowerCase().match(/\.jpe?g$/) ? "image/jpeg" : "application/pdf");
+            const blob = new Blob([byteNums], { type: resolvedMime });
+            const file = new File([blob], filename, { type: resolvedMime, lastModified: Date.now() });
+
+            // Pasang File ke input.files menggunakan DataTransfer
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+
+            // Picu event input & change di Main World (jQuery dan native listener akan menerima e.target.files[0])
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+
+            // Pastikan input.files tetap terjaga setelah event handler halaman berjalan
+            if (!input.files || input.files.length === 0) {
+                input.files = dt.files;
+            }
+
+            // Perbarui tampilan nama file di sekitar tombol Pilih File bila ada textbox/label pendamping
+            const group = input.closest(".input-group, .form-group");
+            if (group) {
+                const textDisplay = group.querySelector("input[type='text'][readonly], .file-caption-name");
+                if (textDisplay) {
+                    if (textDisplay.tagName === "INPUT" && !textDisplay.value) {
+                        textDisplay.value = filename;
+                    } else if (textDisplay.tagName !== "INPUT" && !textDisplay.textContent) {
+                        textDisplay.textContent = filename;
+                    }
+                }
+            }
+
+            console.log(`[PageBridge] ✔ Berkas '${filename}' berhasil dimasukkan ke #${input.id || section}`);
+            window.postMessage(
+                {
+                    type: "PPAT_INJECT_SECTION_FILE_RESPONSE",
+                    requestId,
+                    section,
+                    success: true,
+                    filename,
+                },
+                "*"
+            );
+        } catch (err) {
+            console.error(`[PageBridge] Gagal injeksi berkas section '${section}':`, err);
+            window.postMessage(
+                {
+                    type: "PPAT_INJECT_SECTION_FILE_RESPONSE",
+                    requestId,
+                    section,
+                    success: false,
+                    error: err.message || String(err),
+                },
+                "*"
+            );
+        }
+    }
+
     // Satu-satunya listener message channel
     window.addEventListener("message", (e) => {
         if (!e.data || typeof e.data !== "object") return;
         if (e.data.type === "PPAT_INJECT_AND_UPLOAD") {
             handleUploadRequest(e.data);
+        } else if (e.data.type === "PPAT_INJECT_SECTION_FILE") {
+            handleSectionFileInject(e.data);
         } else if (e.data.type === "PPAT_DISMISS_MODAL") {
             pressModalOkButton();
         }
