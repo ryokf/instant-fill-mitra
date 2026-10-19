@@ -1,10 +1,11 @@
 /**
- * Pengisian otomatis Form PPh (Pajak Penghasilan).
+ * Pengisian otomatis Form PPh (Pajak Penghasilan / SSP).
  * Alur pengisian:
- * 1. Mengisi kolom Nomor Suket dan NPWP.
- * 2. Mengklik otomatis tombol "Cari" di sebelah kolom Nomor Suket.
- * 3. Menunggu hingga semua kolom hasil pencarian di section PPh terisi.
- * 4. Menekan/membuka otomatis tombol "Pilih File" untuk upload bukti PPh.
+ * 1. Mengisi kolom NPWP dan Nomor Suket (kodeverifikasi).
+ * 2. Mengklik tombol "Cari" (#btncarissp) di sebelah kolom Nomor Suket.
+ * 3. Menunggu hingga proses cek Suket selesai (blockUI selesai & kolom hasil cek terisi).
+ * 4. Mengunggah file berkas PPh otomatis dari folder pembeli (PPH.pdf).
+ * 5. Dilanjutkan dengan menekan tombol "Tambah" (#frmSurat submit).
  */
 PPAT.pphFiller = (() => {
     const { dom, config } = PPAT;
@@ -12,11 +13,76 @@ PPAT.pphFiller = (() => {
     const S_PPH = SELECTORS.pph;
 
     /**
+     * Memeriksa apakah data PPh sudah tersimpan pada "Daftar SSP/PPH yang sudah diinput"
+     * di sebelah kanan form PPh (#daftarsuratplaceholder li).
+     */
+    function isPphSaved() {
+        const placeholder = document.querySelector(S_PPH.daftarPlaceholder || "#daftarsuratplaceholder");
+        if (!placeholder) return false;
+        const items = placeholder.querySelectorAll("li");
+        return Array.from(items).some((li) => {
+            return (
+                li.querySelector(".message_wrapper") ||
+                li.querySelector(".heading") ||
+                (li.textContent && li.textContent.trim().length > 5)
+            );
+        });
+    }
+
+    /**
+     * Menunggu hingga data PPh tersimpan di "Daftar SSP/PPH yang sudah diinput".
+     */
+    function waitForPphSaved(timeoutMs = 45000) {
+        if (isPphSaved()) return Promise.resolve(true);
+
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const placeholder = document.querySelector(S_PPH.daftarPlaceholder || "#daftarsuratplaceholder");
+
+            let interval = null;
+            let observer = null;
+
+            const cleanup = () => {
+                if (observer) {
+                    try { observer.disconnect(); } catch (_) {}
+                    observer = null;
+                }
+                if (interval) {
+                    clearInterval(interval);
+                    interval = null;
+                }
+            };
+
+            if (placeholder) {
+                observer = new MutationObserver(() => {
+                    if (isPphSaved()) {
+                        cleanup();
+                        resolve(true);
+                    }
+                });
+                observer.observe(placeholder, { childList: true, subtree: true });
+            }
+
+            interval = setInterval(() => {
+                if (isPphSaved()) {
+                    cleanup();
+                    resolve(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    cleanup();
+                    resolve(false);
+                }
+            }, 200);
+        });
+    }
+
+    /**
      * Mencari input Nomor Suket pada section PPh dengan berbagai strategi selector.
      */
     function findInputNomorSuket(container) {
         const root = container || document;
         const candidates = [
+            "#kodeverifikasi",
+            "input[name='kodeverifikasi']",
             "#nomorsuket",
             "#nosuket",
             "#txtNomorSuket",
@@ -33,10 +99,10 @@ PPAT.pphFiller = (() => {
             if (el) return el;
         }
 
-        // Fallback: input teks pertama yang berada sebelum tombol cari
+        // Fallback: input teks di dalam input-group sebelum tombol cari
         const btnCari = findBtnCariSuket(root);
         if (btnCari) {
-            const inputGroup = btnCari.closest(".input-group") || btnCari.parentElement;
+            const inputGroup = btnCari.closest(".input-group") || btnCari.closest(".form-group") || btnCari.parentElement;
             if (inputGroup) {
                 const inp = inputGroup.querySelector("input[type='text'], input:not([type])");
                 if (inp) return inp;
@@ -46,48 +112,43 @@ PPAT.pphFiller = (() => {
     }
 
     /**
-     * Mencari tombol 'Cari' di sebelah kolom Nomor Suket.
+     * Mencari tombol 'Cari' / 'Cek' di sebelah kolom Nomor Suket.
      */
     function findBtnCariSuket(container) {
         const root = container || document;
 
-        // 1. Coba cari di dalam input-group tempat input nomor suket berada
-        const suketInput = root.querySelector(
-            "#nomorsuket, #nosuket, #txtNomorSuket, #nomor_suket, #suket, input[name*='suket' i]"
-        );
-        if (suketInput) {
-            const group = suketInput.closest(".input-group") || suketInput.parentElement;
-            if (group) {
-                const btn = group.querySelector("button, a.btn, input[type='button'], .btn");
-                if (btn) return btn;
-            }
-        }
-
-        // 2. Coba selector spesifik
+        // 1. Selector ID spesifik tombol Cari SSP
         const candidates = [
+            "#btncarissp",
             "#btncarisuket",
             "#btnCariSuket",
             "#btn-cari-suket",
             "#btncari",
             "#btnCariPPH",
+            "button[title*='Verifikasi' i]",
             "button[id*='suket' i]",
             "button[id*='cari' i]",
-            "a[id*='cari' i]",
-            "button.btn-search",
         ];
         for (const sel of candidates) {
             const el = root.querySelector(sel);
             if (el) return el;
         }
 
-        // 3. Tombol dengan teks 'Cari' atau ikon pencarian
+        // 2. Tombol di sebelah input nomor suket
+        const suketInput = root.querySelector("#kodeverifikasi, #nomorsuket, #nosuket, input[name='kodeverifikasi']");
+        if (suketInput) {
+            const parent = suketInput.closest(".form-group") || suketInput.parentElement;
+            if (parent) {
+                const btn = parent.querySelector("#btncarissp, button.btn-success, button[title*='Verifikasi' i], .input-group-btn button, button");
+                if (btn) return btn;
+            }
+        }
+
+        // 3. Tombol dengan teks 'Cari'
         const allButtons = Array.from(root.querySelectorAll("button, a.btn"));
         for (const btn of allButtons) {
             const text = (btn.textContent || "").trim().toLowerCase();
-            if (text === "cari" || text.includes("cari suket") || text.includes("validasi")) {
-                return btn;
-            }
-            if (btn.querySelector("i.fa-search, i.glyphicon-search")) {
+            if (text === "cari" || text.includes("cari suket") || text.includes("verifikasi")) {
                 return btn;
             }
         }
@@ -101,9 +162,10 @@ PPAT.pphFiller = (() => {
     function findInputNpwp(container) {
         const root = container || document;
         const candidates = [
-            "#tNPWP",
             "#npwp",
+            "#tNPWP",
             "#npwppph",
+            "input[name='npwp']",
             "input[name*='npwp' i]",
             "input[id*='npwp' i]",
             "input[placeholder*='npwp' i]",
@@ -120,8 +182,10 @@ PPAT.pphFiller = (() => {
      */
     function findInputFile(container) {
         const specificCandidates = [
+            "#txtUploadFileSSP",
             "#txtUploadFilePPH",
             "#txtUploadFilePPh",
+            "input[name='UploadFromFileInstansi']",
             "input[name*='UploadFilePPH' i]",
             "input[name*='UploadFromFilePPH' i]",
         ];
@@ -144,40 +208,99 @@ PPAT.pphFiller = (() => {
     }
 
     /**
-     * Menunggu hingga proses pencarian Suket selesai dan kolom-kolom PPh terisi.
+     * Mencari tombol Tambah pada form PPh.
      */
-    function waitForPphFieldsReady(container, timeoutMs = 8000) {
+    function findBtnTambah(container) {
         const root = container || document;
+        const candidates = [
+            "button[type='submit'][form='frmSurat']",
+            "button[form='frmSurat']",
+            "#frmSurat button[type='submit']",
+            "#btn-tambah",
+            "#btn-tambahpph",
+            "#btn-tambahPPH",
+        ];
+        for (const sel of candidates) {
+            const el = root.querySelector(sel) || document.querySelector(sel);
+            if (el) return el;
+        }
+
+        const buttons = Array.from((root || document).querySelectorAll("button"));
+        return buttons.find((b) => (b.textContent || "").trim().toLowerCase() === "tambah") || null;
+    }
+
+    /**
+     * Memicu klik pada tombol 'Cek' / 'Cari' di sebelah kolom Nomor Suket
+     * dan mengeksekusi cekServicessp(0) di Main World.
+     */
+    function triggerCekSuket(btnCari) {
+        console.log("AutoFill PPAT: Menekan tombol Cek Suket PPh (#btncarissp)...");
+        if (btnCari) {
+            try {
+                btnCari.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+                btnCari.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+                btnCari.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+                btnCari.click();
+            } catch (_) {}
+        }
+
+        // Panggil fungsi cekServicessp bawaan ATR/BPN di Main World
+        dom.runInPageContext(() => {
+            if (typeof window.cekServicessp === "function") {
+                try {
+                    window.cekServicessp(0);
+                    return;
+                } catch (_) {}
+            }
+            if (window.jQuery) {
+                const $btn = window.jQuery("#btncarissp");
+                if ($btn.length) $btn.click();
+            }
+        });
+    }
+
+    /**
+     * Menunggu hingga proses cek Suket selesai:
+     * - Loading overlay (.blockUI) hilang
+     * - Kolom hasil respon terisi (#nomorssp, #tanggalssp, #nilaissp, atau #npwpplaceholder)
+     *   atau modal notifikasi respon muncul.
+     */
+    function waitForPphCekCompleted(container, timeoutMs = 25000) {
         return new Promise((resolve) => {
             const startTime = Date.now();
 
-            const check = () => {
-                // Periksa apakah ada input lain di section PPh yang terisi (misal nama WP, nilai, atau tgl)
-                const inputs = Array.from(root.querySelectorAll("input:not([type='hidden']):not([type='file'])"));
-                const filledInputs = inputs.filter((inp) => inp.value && inp.value.trim() !== "");
+            // Beri jeda 400ms pertama agar AJAX / blockUI sempat aktif
+            setTimeout(() => {
+                const check = () => {
+                    const isBlocking = !!document.querySelector(".blockUI.blockOverlay");
+                    const nomorEl = document.querySelector("#nomorssp");
+                    const tglEl = document.querySelector("#tanggalssp");
+                    const nilaiEl = document.querySelector("#nilaissp");
+                    const respPlaceholder = document.querySelector("#npwpplaceholder");
+                    const hasModal = !!document.querySelector("#myModal.in, #myModal .modal-content");
 
-                // Jika setidaknya 3 input sudah terisi (Suket, NPWP, dan field respon DJP seperti Nama/Nilai)
-                if (filledInputs.length >= 3) {
-                    return resolve(true);
-                }
+                    const hasDataFilled =
+                        (nomorEl && nomorEl.value && nomorEl.value.trim() !== "") ||
+                        (tglEl && tglEl.value && tglEl.value.trim() !== "" && !tglEl.value.includes("0001")) ||
+                        (nilaiEl && nilaiEl.value && nilaiEl.value.trim() !== "" && nilaiEl.value.trim() !== "0") ||
+                        (respPlaceholder && respPlaceholder.textContent && respPlaceholder.textContent.trim().length > 3) ||
+                        hasModal;
 
-                // Cek jika loading spinner hilang dan tombol cari sudah aktif kembali
-                const isSearching =
-                    root.querySelector(".loading, .spinner, [disabled]") ||
-                    document.querySelector(".blockUI.blockOverlay");
-                if (Date.now() - startTime > 1200 && !isSearching && filledInputs.length >= 2) {
-                    return resolve(true);
-                }
+                    if (!isBlocking && hasDataFilled) {
+                        console.log("AutoFill PPAT: Cek Suket PPh selesai dan hasil validasi terdeteksi!");
+                        return resolve(true);
+                    }
 
-                if (Date.now() - startTime > timeoutMs) {
-                    console.warn("AutoFill PPAT: Timeout menunggu kolom PPh terisi lengkap, melanjutkan.");
-                    return resolve(true);
-                }
+                    if (Date.now() - startTime > timeoutMs) {
+                        console.warn("AutoFill PPAT: Batas waktu menunggu hasil Cek Suket PPh terlewati, melanjutkan pengisian.");
+                        return resolve(false);
+                    }
 
-                setTimeout(check, 200);
-            };
+                    setTimeout(check, 150);
+                };
 
-            setTimeout(check, 300);
+                check();
+            }, 400);
         });
     }
 
@@ -208,7 +331,6 @@ PPAT.pphFiller = (() => {
 
         let pickerOpened = false;
 
-        // 1. Coba showPicker() native (Chrome 99+)
         if (typeof fileInput.showPicker === "function") {
             try {
                 fileInput.showPicker();
@@ -218,7 +340,6 @@ PPAT.pphFiller = (() => {
             }
         }
 
-        // 2. Coba dispatch native MouseEvent click jika showPicker belum terbuka
         if (!pickerOpened) {
             try {
                 fileInput.dispatchEvent(
@@ -231,16 +352,15 @@ PPAT.pphFiller = (() => {
             } catch (e) {}
         }
 
-        // 3. Coba fileInput.click() langsung
         try {
             fileInput.click();
         } catch (err) {
             console.warn("AutoFill PPAT: PPh fileInput.click() error:", err);
         }
 
-        // 4. Trigger juga di Main World untuk kepastian pemanggilan
         dom.runInPageContext(() => {
             const inp =
+                document.getElementById("txtUploadFileSSP") ||
                 document.getElementById("txtUploadFilePPH") ||
                 document.getElementById("txtUploadFilePPh");
             if (inp) {
@@ -258,13 +378,13 @@ PPAT.pphFiller = (() => {
     }
 
     /**
-     * Mengisi Form PPh (Pajak Penghasilan).
-     * @param {Object} data Data hasil ekstraksi dokumen PPh
-     * @param {string} data.nomor_suket Nomor Surat Keterangan (contoh: KET-06442/PHTB-CT/KPP.1012/2026)
-     * @param {string} data.npwp NPWP Wajib Pajak
-     * @param {Object} options
-     * @param {boolean} options.autoSubmit Otomatis submit setelah file dipilih
-     * @param {boolean} options.showAlert Tampilkan alert jika berhasil
+     * Mengisi Form PPh (Pajak Penghasilan / SSP).
+     * Urutan eksekusi:
+     * 1. Mengisi NPWP (#npwp) dan No. Suket (#kodeverifikasi).
+     * 2. Klik tombol cek (#btncarissp) disebelah input nomor suket.
+     * 3. Menunggu proses validasi suket selesai.
+     * 4. Upload berkas PPh otomatis dari folder pembeli (PPH.pdf).
+     * 5. Menekan tombol Tambah (#frmSurat submit).
      */
     async function fill(data, options = {}) {
         if (!data) return false;
@@ -272,11 +392,10 @@ PPAT.pphFiller = (() => {
 
         console.log("AutoFill PPAT: Memulai pengisian Section PPh dengan data:", data);
 
-        // Cari container section PPh jika ada
         const container = document.querySelector(S_PPH.container);
 
         // ---------------------------------------------------------------------
-        // 1. Cari & Isi Kolom Nomor Suket
+        // 1. Cari & Isi Kolom NPWP dan Nomor Suket
         // ---------------------------------------------------------------------
         const inputSuket = findInputNomorSuket(container);
         if (!inputSuket) {
@@ -288,50 +407,56 @@ PPAT.pphFiller = (() => {
         const pphScope =
             container ||
             inputSuket.closest("form") ||
-            inputSuket.closest("[id*='pph' i], [id*='placeholder' i]") ||
+            inputSuket.closest("[id*='pph' i], [id*='placeholder' i], [id*='ssp' i]") ||
             inputSuket.closest(".x_content, .x_panel, .panel-body") ||
             inputSuket.parentElement;
 
         inputSuket.scrollIntoView({ behavior: "smooth", block: "center" });
         await dom.delay(TIMING.FORM_SETTLE_DELAY_MS);
 
-        if (data.nomor_suket) {
-            dom.setInputValue(inputSuket, data.nomor_suket);
-            console.log("AutoFill PPAT: Nomor Suket terisi ->", data.nomor_suket);
-        }
-
-        // ---------------------------------------------------------------------
-        // 2. Cari & Isi Kolom NPWP (dalam scope Section PPh)
-        // ---------------------------------------------------------------------
+        // 1a. Isi Kolom NPWP
         const inputNpwp = findInputNpwp(pphScope);
-        if (inputNpwp && data.npwp) {
-            dom.setInputValue(inputNpwp, data.npwp);
-            console.log("AutoFill PPAT: NPWP PPh terisi ->", data.npwp);
+        const cleanNpwp = (data.npwp || data.npwp_formatted || "").toString().replace(/\D/g, "");
+        if (inputNpwp && cleanNpwp) {
+            dom.setInputValue(inputNpwp, cleanNpwp);
+            console.log("AutoFill PPAT: NPWP PPh terisi ->", cleanNpwp);
         }
 
-        await dom.delay(300);
+        // 1b. Isi Kolom Nomor Suket / Kode Verifikasi
+        const suketVal = (data.nomor_suket || data.nomor_skb || data.kode_verifikasi || "").toString().trim();
+        if (suketVal) {
+            dom.setInputValue(inputSuket, suketVal);
+            console.log("AutoFill PPAT: Nomor Suket PPh terisi ->", suketVal);
+        }
+
+        // Sinkronisasi ke jQuery Main World
+        dom.runInPageContext((suket, npwp) => {
+            if (!window.jQuery) return;
+            if (npwp) window.jQuery("#npwp, #tNPWP").val(npwp).trigger("input").trigger("change").trigger("blur");
+            if (suket) window.jQuery("#kodeverifikasi, #nomorsuket").val(suket).trigger("input").trigger("change").trigger("blur");
+        }, suketVal, cleanNpwp);
+
+        await dom.delay(350);
 
         // ---------------------------------------------------------------------
-        // 3. Klik Otomatis Tombol 'Cari' di Sebelah Kolom Nomor Suket
+        // 2. Klik Tombol Cek di sebelah Input Nomor Suket
         // ---------------------------------------------------------------------
         const btnCari = findBtnCariSuket(pphScope);
         if (btnCari) {
-            console.log("AutoFill PPAT: Menekan tombol 'Cari' Nomor Suket...");
-            btnCari.click();
+            triggerCekSuket(btnCari);
         } else {
             console.warn("AutoFill PPAT: Tombol 'Cari' di sebelah kolom Nomor Suket tidak ditemukan.");
         }
 
         // ---------------------------------------------------------------------
-        // 4. Tunggu Semua Kolom di Section PPh Terisi Lengkap
+        // 3. Menunggu Hingga Proses Cek Suket Selesai
         // ---------------------------------------------------------------------
-        console.log("AutoFill PPAT: Menunggu kolom-kolom PPh terisi lengkap dari hasil pencarian...");
-        await waitForPphFieldsReady(pphScope, 8000);
+        console.log("AutoFill PPAT: Menunggu proses Cek Suket PPh selesai...");
+        await waitForPphCekCompleted(pphScope, 25000);
         await dom.delay(500);
 
         // ---------------------------------------------------------------------
-        // 5. Klik / Upload Otomatis Berkas PPh pada Tombol 'Pilih File'
-        //    mengambil file PPh dari G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli]
+        // 4. Setelah itu baru Klik / Upload Berkas PPh Otomatis dari Folder Pembeli
         // ---------------------------------------------------------------------
         const fileInput = findInputFile(pphScope);
         if (fileInput) {
@@ -350,7 +475,7 @@ PPAT.pphFiller = (() => {
             let autoUploaded = false;
             if (buyerName && PPAT.pembeliUploadFiller) {
                 try {
-                    console.log(`AutoFill PPAT: Mencari & mengunggah berkas PPh otomatis untuk pembeli "${buyerName}"...`);
+                    console.log(`AutoFill PPAT: Mengunggah berkas PPh otomatis untuk pembeli "${buyerName}"...`);
                     const docData = options.pphDocPromise
                         ? await options.pphDocPromise
                         : await PPAT.pembeliUploadFiller.downloadPembeliDocument(buyerName, "pph");
@@ -370,20 +495,24 @@ PPAT.pphFiller = (() => {
                 }
             }
 
+            // -----------------------------------------------------------------
+            // 5. Dilanjutkan dengan Tombol Tambah
+            // -----------------------------------------------------------------
             if (autoUploaded) {
                 if (autoSubmit) {
                     await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
-                    const btnTambah =
-                        document.querySelector(S_PPH.btnTambah) ||
-                        (pphScope && pphScope.querySelector("button[id*='tambah' i], button.btn-primary, button[type='submit']"));
+                    const btnTambah = findBtnTambah(pphScope);
                     if (btnTambah) {
                         const waitStart = Date.now();
                         while (btnTambah.disabled && Date.now() - waitStart < 5000) {
                             await dom.delay(100);
                         }
-                        console.log("AutoFill PPAT: Menekan tombol Tambah PPh (#btn-tambahpph)...");
+                        console.log("AutoFill PPAT: Menekan tombol Tambah PPh...");
                         btnTambah.click();
                     }
+
+                    console.log("AutoFill PPAT: Menunggu PPh tersimpan di 'Daftar SSP/PPH'...");
+                    await waitForPphSaved(45000);
                 }
             } else {
                 // Fallback manual jika berkas PPh tidak ditemukan di folder pembeli
@@ -392,13 +521,12 @@ PPAT.pphFiller = (() => {
                     fileInput._ppatChangeHandler = async () => {
                         if (fileInput.files && fileInput.files.length > 0) {
                             await dom.delay(TIMING.SUBMIT_DELAY_MS + 250);
-                            const btnTambah =
-                                document.querySelector(S_PPH.btnTambah) ||
-                                (pphScope && pphScope.querySelector("button[id*='tambah' i], button.btn-primary, button[type='submit']"));
+                            const btnTambah = findBtnTambah(pphScope);
                             if (btnTambah) {
                                 console.log("AutoFill PPAT: Berkas PPh terpilih, menekan tombol Tambah PPh...");
                                 btnTambah.click();
                             }
+                            await waitForPphSaved(45000);
                         }
                     };
                     fileInput.addEventListener("change", fileInput._ppatChangeHandler, { once: true });
@@ -408,6 +536,10 @@ PPAT.pphFiller = (() => {
             }
         } else {
             console.warn("AutoFill PPAT: Tombol 'Pilih File' PPh tidak ditemukan.");
+            if (autoSubmit) {
+                const btnTambah = findBtnTambah(pphScope);
+                if (btnTambah) btnTambah.click();
+            }
         }
 
         if (options.showAlert) {
@@ -417,5 +549,17 @@ PPAT.pphFiller = (() => {
         return true;
     }
 
-    return { fill, openPphFilePicker: () => triggerFilePicker(findInputFile(document.querySelector(S_PPH.container))) };
+    return {
+        fill,
+        isPphSaved,
+        waitForPphSaved,
+        waitForPphCekCompleted,
+        triggerCekSuket,
+        findInputNomorSuket,
+        findBtnCariSuket,
+        findInputNpwp,
+        findInputFile,
+        findBtnTambah,
+        openPphFilePicker: () => triggerFilePicker(findInputFile(document.querySelector(S_PPH.container))),
+    };
 })();

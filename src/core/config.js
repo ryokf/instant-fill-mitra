@@ -218,14 +218,14 @@ PPAT.config = Object.freeze({
         }),
 
         pph: Object.freeze({
-            container: "#inputPPHplaceholder, #inputPPhplaceholder, #inputpphplaceholder, #frmPPH, #frmPph, #section-pph",
-            inputNomorSuket: "#nomorsuket, #nosuket, #txtNomorSuket, #nomor_suket, #suket, input[name*='suket' i], input[placeholder*='suket' i], input[placeholder*='KET-' i]",
-            btnCariSuket: "#btncarisuket, #btnCariSuket, #btn-cari-suket, #btncari, #btnCariPPH, button[id*='suket' i]",
-            inputNpwp: "#tNPWP, #npwp, #npwppph, input[name*='npwp' i], input[id*='npwp' i]",
-            inputFile: "#txtUploadFilePPH, #txtUploadFilePPh, input[name*='UploadFilePPH'], .btn-file input[type='file'], input[type='file']",
-            btnTambah: "#btn-tambahpph, #btn-tambahPPH, #btn-tambah",
-            daftarPlaceholder: "#daftarpphplaceholder",
-            daftarItems: "#daftarpphplaceholder li",
+            container: "#inputSSPplaceholder, #inputPPHplaceholder, #inputPPhplaceholder, #inputpphplaceholder, #frmSurat, #frmPPH, #frmPph, #section-pph",
+            inputNomorSuket: "#kodeverifikasi, #nomorsuket, #nosuket, #txtNomorSuket, #nomor_suket, #suket, input[name='kodeverifikasi' i], input[name*='suket' i], input[placeholder*='suket' i], input[placeholder*='KET-' i]",
+            btnCariSuket: "#btncarissp, #btncarisuket, #btnCariSuket, #btn-cari-suket, #btncari, #btnCariPPH, button[title*='Verifikasi' i], button[id*='suket' i]",
+            inputNpwp: "#npwp, #tNPWP, #npwppph, input[name='npwp' i], input[id*='npwp' i]",
+            inputFile: "#txtUploadFileSSP, #txtUploadFilePPH, #txtUploadFilePPh, input[name*='UploadFromFileInstansi'], input[name*='UploadFilePPH'], .btn-file input[type='file'], input[type='file']",
+            btnTambah: "button[type='submit'][form='frmSurat'], button[form='frmSurat'], #frmSurat button[type='submit'], #btn-tambahpph, #btn-tambahPPH, #btn-tambah, button[id*='tambah' i]",
+            daftarPlaceholder: "#daftarsuratplaceholder, #daftarpphplaceholder",
+            daftarItems: "#daftarsuratplaceholder li, #daftarpphplaceholder li",
         }),
     }),
 

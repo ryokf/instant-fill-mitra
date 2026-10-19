@@ -269,10 +269,11 @@
                         document.querySelector("#frmBPHTB input[type='file'], #inputBPHTBplaceholder input[type='file']");
                 } else if (section === "pph") {
                     input =
+                        document.getElementById("txtUploadFileSSP") ||
                         document.getElementById("txtUploadFilePPH") ||
                         document.getElementById("txtUploadFilePPh") ||
                         document.querySelector(
-                            "#frmPPH input[type='file'], #frmPph input[type='file'], #inputPPHplaceholder input[type='file'], #inputPPhplaceholder input[type='file'], #inputpphplaceholder input[type='file'], input[name*='UploadFilePPH' i], input[name*='UploadFromFilePPH' i]"
+                            "#inputSSPplaceholder input[type='file'], #frmSurat input[type='file'], #frmPPH input[type='file'], #frmPph input[type='file'], #inputPPHplaceholder input[type='file'], #inputPPhplaceholder input[type='file'], #inputpphplaceholder input[type='file'], input[name*='UploadFilePPH' i], input[name*='UploadFromFilePPH' i], input[name='UploadFromFileInstansi']"
                         );
                 }
             }
@@ -290,6 +291,15 @@
             const resolvedMime = mimeType || (filename && filename.toLowerCase().endsWith(".png") ? "image/png" : filename && filename.toLowerCase().match(/\.jpe?g$/) ? "image/jpeg" : "application/pdf");
             const blob = new Blob([byteNums], { type: resolvedMime });
             const file = new File([blob], filename, { type: resolvedMime, lastModified: Date.now() });
+
+            // Sinkronisasi variabel halaman internal ATR/BPN
+            if (section === "pbb") {
+                try { window.dfpbb = file; window.dfupload2 = file; } catch (_) {}
+            } else if (section === "bphtb") {
+                try { window.dfbphtb = file; } catch (_) {}
+            } else if (section === "pph") {
+                try { window.dfssp = file; window.dfupload2 = file; } catch (_) {}
+            }
 
             // Pasang File ke input.files menggunakan DataTransfer
             const dt = new DataTransfer();
