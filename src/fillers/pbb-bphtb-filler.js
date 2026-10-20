@@ -78,16 +78,6 @@ PPAT.pbbBphtbFiller = (() => {
     }
 
     /**
-     * Memeriksa apakah dropdown sertifikat (#alashakid) sudah terisi opsi.
-     */
-    function isSertifikatFilled() {
-        const selectCert = document.querySelector(S_PBB.dropdownSertifikat);
-        if (!selectCert || !selectCert.options) return false;
-        const validOptions = Array.from(selectCert.options).filter((opt) => opt.value && opt.value.trim() !== "");
-        return validOptions.length > 0;
-    }
-
-    /**
      * Memeriksa apakah data PBB sudah tersimpan pada "Daftar PBB yang sudah diinput"
      * di sebelah kanan form PBB (#daftarpbbplaceholder li).
      */
@@ -578,103 +568,14 @@ PPAT.pbbBphtbFiller = (() => {
                 }
             }
 
-            if (autoUploaded) {
-                if (autoSubmit) {
-                    await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
-                    const submitBtn = document.querySelector(S_PBB.btnTambah);
-                    if (submitBtn) {
-                        console.log("AutoFill PPAT: Menekan tombol Tambah PBB (#btn-tambahpbb)...");
-                        submitBtn.click();
-                    }
-                }
-
-                if (options.continueToBphtb ?? true) {
-                    console.log("AutoFill PPAT: Menunggu PBB tersimpan di 'Daftar PBB yang sudah diinput'...");
-                    const saved = await waitForPbbSaved(45000);
-                    if (saved) {
-                        console.log("AutoFill PPAT: PBB terdeteksi di Daftar PBB! Melanjutkan otomatis ke Section BPHTB...");
-                        await dom.delay(500);
-                        await fillBphtb(data, options);
-                    } else {
-                        console.warn("AutoFill PPAT: Batas waktu menunggu PBB tersimpan terlewati.");
-                    }
-                } else if (options.showAlert) {
-                    alert(MESSAGES.pbbFilled);
-                }
-
-                return true;
-            }
-
-            // Fallback manual: jika berkas PBB tidak ditemukan di folder pembeli, buka dialog file picker
-            fileInput._ppatChangeHandler = async () => {
-                if (fileInput.files && fileInput.files.length > 0) {
-                    if (autoSubmit) {
-                        await dom.delay(TIMING.SUBMIT_DELAY_MS + 250);
-                        const submitBtn = document.querySelector(S_PBB.btnTambah);
-                        if (submitBtn) {
-                            submitBtn.click();
-                        }
-                    }
-
-                    if (options.continueToBphtb ?? true) {
-                        console.log("AutoFill PPAT: Menunggu PBB tersimpan di 'Daftar PBB yang sudah diinput'...");
-                        const saved = await waitForPbbSaved(45000);
-                        if (saved) {
-                            console.log("AutoFill PPAT: PBB terdeteksi di Daftar PBB! Melanjutkan otomatis ke Section BPHTB...");
-                            await dom.delay(500);
-                            await fillBphtb(data, options);
-                        } else {
-                            console.warn("AutoFill PPAT: Batas waktu menunggu PBB tersimpan terlewati.");
-                        }
-                    } else if (options.showAlert) {
-                        alert(MESSAGES.pbbFilled);
-                    }
-                }
-            };
-
-            fileInput.addEventListener("change", fileInput._ppatChangeHandler, { once: true });
-
-            let pickerOpened = false;
-            if (typeof fileInput.showPicker === "function") {
-                try {
-                    fileInput.showPicker();
-                    pickerOpened = true;
-                } catch (e) {
-                    console.warn("AutoFill PPAT: showPicker error:", e);
+            if (autoUploaded && autoSubmit) {
+                await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
+                const submitBtn = document.querySelector(S_PBB.btnTambah);
+                if (submitBtn) {
+                    console.log("AutoFill PPAT: Menekan tombol Tambah PBB (#btn-tambahpbb)...");
+                    submitBtn.click();
                 }
             }
-            if (!pickerOpened) {
-                try {
-                    fileInput.dispatchEvent(
-                        new MouseEvent("click", {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                        })
-                    );
-                } catch (e) {}
-            }
-            try {
-                fileInput.click();
-            } catch (err) {
-                console.warn("AutoFill PPAT: fileInput.click() error:", err);
-            }
-            dom.runInPageContext(() => {
-                const inp =
-                    document.getElementById("txtUploadFilePBB") ||
-                    document.querySelector(".btn-file input[type='file']");
-                if (inp) {
-                    if (typeof inp.showPicker === "function") {
-                        try {
-                            inp.showPicker();
-                            return;
-                        } catch (e) {}
-                    }
-                    try {
-                        inp.click();
-                    } catch (e) {}
-                }
-            });
         } else {
             console.warn("AutoFill PPAT: Elemen tombol upload file PBB (#txtUploadFilePBB) tidak ditemukan.");
             if (autoSubmit) {
@@ -833,106 +734,18 @@ PPAT.pbbBphtbFiller = (() => {
                 }
             }
 
-            if (autoUploaded) {
-                if (autoSubmit) {
-                    const submitBtn = document.querySelector(S_BPHTB.btnTambah);
-                    if (submitBtn) {
-                        const waitBtnStart = Date.now();
-                        while (submitBtn.disabled && Date.now() - waitBtnStart < 8000) {
-                            await dom.delay(100);
-                        }
-                        await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
-                        console.log("AutoFill PPAT: Menekan tombol Tambah BPHTB (#btn-tambahbphtb)...");
-                        submitBtn.click();
+            if (autoUploaded && autoSubmit) {
+                const submitBtn = document.querySelector(S_BPHTB.btnTambah);
+                if (submitBtn) {
+                    const waitBtnStart = Date.now();
+                    while (submitBtn.disabled && Date.now() - waitBtnStart < 8000) {
+                        await dom.delay(100);
                     }
-                } else if (options.showAlert) {
-                    alert(MESSAGES.bphtbFilled);
-                }
-
-                // Jika diminta lanjut otomatis ke PPh setelah BPHTB tersimpan
-                if (options.continueToPph && options.pphData && PPAT.pphFiller) {
-                    console.log("AutoFill PPAT: Menunggu BPHTB tersimpan di 'Daftar BPHTB yang sudah diinput'...");
-                    const bphtbSaved = await waitForBphtbSaved(45000);
-                    if (bphtbSaved) {
-                        console.log("AutoFill PPAT: BPHTB terdeteksi di Daftar BPHTB! Melanjutkan otomatis ke Section PPh...");
-                        await dom.delay(500);
-                        await PPAT.pphFiller.fill(options.pphData, options);
-                    }
-                }
-
-                return true;
-            }
-
-            // Fallback manual jika berkas BPHTB tidak ditemukan di folder pembeli
-            fileInputBphtb._ppatChangeHandler = async () => {
-                if (fileInputBphtb.files && fileInputBphtb.files.length > 0) {
-                    if (autoSubmit) {
-                        const submitBtn = document.querySelector(S_BPHTB.btnTambah);
-                        if (submitBtn) {
-                            const waitBtnStart = Date.now();
-                            while (submitBtn.disabled && Date.now() - waitBtnStart < 8000) {
-                                await dom.delay(100);
-                            }
-                            await dom.delay(TIMING.SUBMIT_DELAY_MS + 250);
-                            submitBtn.click();
-                        }
-                    } else if (options.showAlert) {
-                        alert(MESSAGES.bphtbFilled);
-                    }
-
-                    if (options.continueToPph && options.pphData && PPAT.pphFiller) {
-                        const bphtbSaved = await waitForBphtbSaved(45000);
-                        if (bphtbSaved) {
-                            await dom.delay(500);
-                            await PPAT.pphFiller.fill(options.pphData, options);
-                        }
-                    }
-                }
-            };
-
-            fileInputBphtb.addEventListener("change", fileInputBphtb._ppatChangeHandler, { once: true });
-
-            let pickerOpened = false;
-            if (typeof fileInputBphtb.showPicker === "function") {
-                try {
-                    fileInputBphtb.showPicker();
-                    pickerOpened = true;
-                } catch (e) {
-                    console.warn("AutoFill PPAT: BPHTB showPicker error:", e);
+                    await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
+                    console.log("AutoFill PPAT: Menekan tombol Tambah BPHTB (#btn-tambahbphtb)...");
+                    submitBtn.click();
                 }
             }
-            if (!pickerOpened) {
-                try {
-                    fileInputBphtb.dispatchEvent(
-                        new MouseEvent("click", {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                        })
-                    );
-                } catch (e) {}
-            }
-            try {
-                fileInputBphtb.click();
-            } catch (err) {
-                console.warn("AutoFill PPAT: BPHTB fileInput.click error:", err);
-            }
-            dom.runInPageContext(() => {
-                const inp =
-                    document.getElementById("txtUploadFileBPHTB") ||
-                    document.querySelector("#inputBPHTBplaceholder input[type='file']");
-                if (inp) {
-                    if (typeof inp.showPicker === "function") {
-                        try {
-                            inp.showPicker();
-                            return;
-                        } catch (e) {}
-                    }
-                    try {
-                        inp.click();
-                    } catch (e) {}
-                }
-            });
         } else {
             console.warn("AutoFill PPAT: Elemen tombol upload file BPHTB (#txtUploadFileBPHTB) tidak ditemukan.");
             if (autoSubmit) {
@@ -951,86 +764,7 @@ PPAT.pbbBphtbFiller = (() => {
         return true;
     }
 
-    /**
-     * Mengisi PBB terlebih dahulu, kemudian melanjutkan pengisian BPHTB secara otomatis.
-     */
-    async function fillAll(data, options = {}) {
-        const autoSubmit = options.autoSubmit ?? true;
-
-        // 1. Verifikasi prasyarat awal: Sertipikat harus sudah terdaftar di sisi kanan!
-        if (!isSertifikatSaved()) {
-            alert(MESSAGES.sertifikatBelumTerdaftar || "Sertipikat belum terdaftar pada 'Daftar Sertipkat HAT' di sebelah kanan form!");
-            return false;
-        }
-
-        // 2. Jika data PBB sudah ada di daftar sebelah kanan, langsung isi BPHTB!
-        if (isPbbSaved()) {
-            console.log("AutoFill PPAT: PBB sudah terinput di daftar sebelah kanan. Mengisi BPHTB...");
-            return await fillBphtb(data, { ...options, autoSubmit, scrollIntoView: true, waitForPrerequisite: false });
-        }
-
-        // 3. Jalankan pengisian PBB dengan opsi continueToBphtb aktif
-        return await fillPbb(data, { ...options, autoSubmit, continueToBphtb: true, scrollIntoView: true, waitForPrerequisite: false });
-    }
-
-    /**
-     * Memicu klik langsung pada tombol Pilih File dokumen PBB.
-     */
-    function openPbbFilePicker() {
-        const fileInput =
-            document.querySelector("#txtUploadFilePBB") ||
-            document.querySelector(S_PBB.inputFile) ||
-            document.querySelector("input[name='UploadFromFileInstansi']") ||
-            document.querySelector(".btn-file input[type='file']");
-
-        if (fileInput) {
-            const fileWrapper = fileInput.closest(".btn-file") || fileInput.closest(".form-group") || fileInput;
-            fileWrapper.scrollIntoView({ behavior: "smooth", block: "center" });
-
-            if (typeof fileInput.showPicker === "function") {
-                try {
-                    fileInput.showPicker();
-                    return true;
-                } catch (e) {}
-            }
-            try {
-                fileInput.click();
-                return true;
-            } catch (e) {}
-        }
-        return false;
-    }
-
-    /**
-     * Memicu klik langsung pada tombol Pilih File dokumen BPHTB.
-     */
-    function openBphtbFilePicker() {
-        const fileInput =
-            document.querySelector("#txtUploadFileBPHTB") ||
-            document.querySelector(S_BPHTB.inputFile) ||
-            document.querySelector("input[name='UploadFromFileInstansi'][id*='BPHTB']") ||
-            document.querySelector("#inputBPHTBplaceholder input[type='file']");
-
-        if (fileInput) {
-            const fileWrapper = fileInput.closest(".btn-file") || fileInput.closest(".form-group") || fileInput;
-            fileWrapper.scrollIntoView({ behavior: "smooth", block: "center" });
-
-            if (typeof fileInput.showPicker === "function") {
-                try {
-                    fileInput.showPicker();
-                    return true;
-                } catch (e) {}
-            }
-            try {
-                fileInput.click();
-                return true;
-            } catch (e) {}
-        }
-        return false;
-    }
-
     return {
-        isSertifikatFilled,
         isSertifikatSaved,
         waitForSertifikatSaved,
         isPbbSaved,
@@ -1042,8 +776,5 @@ PPAT.pbbBphtbFiller = (() => {
         waitForBphtbValidationInfo,
         fillPbb,
         fillBphtb,
-        fillAll,
-        openPbbFilePicker,
-        openBphtbFilePicker,
     };
 })();

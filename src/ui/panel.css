@@ -87,7 +87,7 @@
     background: #94a3b8;
 }
 
-/* Status deteksi dari web */
+/* Status pesan proses */
 .ppat-status {
     font-size: 11px;
     padding: 7px 10px;
@@ -100,6 +100,10 @@
     justify-content: space-between;
     align-items: center;
     box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.ppat-status.hidden {
+    display: none !important;
 }
 
 .ppat-status.ok {
@@ -118,45 +122,6 @@
     background: #eff6ff;
     border-color: #bfdbfe;
     color: #1e40af;
-}
-
-.ppat-btn-link {
-    font-size: 10px;
-    color: #169F85;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: underline;
-    margin-left: 6px;
-    white-space: nowrap;
-}
-
-/* Opsi Auto-Submit */
-.ppat-auto-submit-row {
-    margin: 0 0 10px 0;
-    padding: 7px 10px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-}
-
-.ppat-auto-submit-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    color: #1e293b;
-    cursor: pointer;
-    user-select: none;
-    margin: 0;
-}
-
-.ppat-auto-submit-label input[type="checkbox"] {
-    margin: 0;
-    accent-color: #26B99A;
-    cursor: pointer;
-    width: 14px;
-    height: 14px;
 }
 
 /* =========================================================================
@@ -178,26 +143,11 @@
 }
 
 /* Warna aksen garis tepi kiri dan badge per section */
-.ppat-section[data-section="penjual"] {
-    border-left-color: #26B99A;
-}
-.ppat-section[data-section="persetujuan"] {
-    border-left-color: #0d9488;
-}
 .ppat-section[data-section="akta"] {
     border-left-color: #3b82f6;
 }
 .ppat-section[data-section="sertipikat"] {
     border-left-color: #6366f1;
-}
-.ppat-section[data-section="bphtb"] {
-    border-left-color: #d97706;
-}
-.ppat-section[data-section="pph"] {
-    border-left-color: #e11d48;
-}
-.ppat-section[data-section="saksi"] {
-    border-left-color: #64748b;
 }
 
 /* Header Section */
@@ -225,13 +175,8 @@
     flex-shrink: 0;
 }
 
-.ppat-section[data-section="penjual"] .ppat-section-badge { background: #26B99A; }
-.ppat-section[data-section="persetujuan"] .ppat-section-badge { background: #0d9488; }
 .ppat-section[data-section="akta"] .ppat-section-badge { background: #3b82f6; }
 .ppat-section[data-section="sertipikat"] .ppat-section-badge { background: #6366f1; }
-.ppat-section[data-section="bphtb"] .ppat-section-badge { background: #d97706; }
-.ppat-section[data-section="pph"] .ppat-section-badge { background: #e11d48; }
-.ppat-section[data-section="saksi"] .ppat-section-badge { background: #64748b; }
 
 .ppat-section-heading {
     display: flex;
@@ -261,25 +206,7 @@
     padding: 8px 10px 10px 10px;
 }
 
-/* Dropdown & Tombol Form */
-.ppat-select {
-    width: 100%;
-    padding: 7px 8px;
-    font-size: 11.5px;
-    border: 1px solid #cbd5e1;
-    border-radius: 5px;
-    margin-bottom: 6px;
-    background: #ffffff;
-    color: #1e293b;
-    outline: none;
-    transition: border-color 0.15s;
-}
-
-.ppat-select:focus {
-    border-color: #26B99A;
-    box-shadow: 0 0 0 2px rgba(38,185,154,0.18);
-}
-
+/* Tombol Aksi */
 .ppat-btn-fill {
     width: 100%;
     padding: 7px 10px;
@@ -299,71 +226,6 @@
 
 .ppat-btn-fill:active {
     transform: scale(0.99);
-}
-
-/* Daftar Orang (Persetujuan & Saksi) */
-.ppat-person-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    max-height: 140px;
-    overflow-y: auto;
-    border: 1px solid #e2e8f0;
-    border-radius: 5px;
-    background: #ffffff;
-}
-
-.ppat-person-list::-webkit-scrollbar {
-    width: 5px;
-}
-.ppat-person-list::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
-}
-
-.ppat-person-list li {
-    padding: 7px 9px;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 11px;
-    color: #1e293b;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-
-.ppat-person-list li:last-child {
-    border-bottom: none;
-}
-
-.ppat-person-list li:hover {
-    background: #f0fdf9;
-}
-
-.ppat-person-list li.active {
-    background: #26B99A;
-    color: #ffffff;
-}
-
-.ppat-person-list li .nik {
-    display: block;
-    font-size: 9.5px;
-    color: #64748b;
-    margin-top: 2px;
-}
-
-.ppat-person-list li.active .nik {
-    color: #e6f7f2;
-}
-
-.ppat-person-list li.empty {
-    cursor: default;
-    color: #94a3b8;
-    font-style: italic;
-    text-align: center;
-    padding: 10px;
-}
-
-.ppat-person-list li.empty:hover {
-    background: none;
 }
 
 /* Tombol melayang jika panel diminimalkan/ditutup */
@@ -486,25 +348,6 @@
     color: #475569;
     margin-top: 2px;
     line-height: 1.35;
-}
-
-/* Compatibility fallback */
-.ppat-form-group {
-    margin-bottom: 10px;
-}
-.ppat-divider {
-    display: none;
-}
-.ppat-label {
-    display: block;
-    font-size: 11px;
-    margin-bottom: 4px;
-    font-weight: bold;
-    color: #1e293b;
-}
-.ppat-label-hint {
-    font-weight: normal;
-    color: #64748b;
 }
 
 @keyframes ppatFadeIn {

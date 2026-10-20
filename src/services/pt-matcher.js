@@ -26,17 +26,5 @@ PPAT.ptMatcher = (() => {
         return partial ? partial.key : null;
     }
 
-    /**
-     * Mencari PT pertama di database yang cocok dengan salah satu nama.
-     * @returns {{key: string, name: string}|null}
-     */
-    function findFirstMatch(names) {
-        for (const name of names) {
-            const key = findPtKeyByName(name);
-            if (key) return { key, name };
-        }
-        return null;
-    }
-
-    return { normalizeName, findPtKeyByName, findFirstMatch };
+    return { normalizeName, findPtKeyByName };
 })();

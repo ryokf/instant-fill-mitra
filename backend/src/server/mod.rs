@@ -18,29 +18,22 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         // Health Check
         .route("/health", get(handlers::health_check))
         .route("/api/health", get(handlers::health_check))
-        // Pembeli (Akta)
+        // Pembeli (Akta AJB)
         .route("/api/extract-pembeli", post(handlers::extract_pembeli_handler))
         .route("/api/pembeli", post(handlers::extract_pembeli_handler))
-        // BPHTB & PBB
-        .route("/api/extract-bphtb", post(handlers::extract_bphtb_handler))
-        .route("/api/bphtb", post(handlers::extract_bphtb_handler))
-        // Sertipikat
+        // Sertipikat (Pengecekan Sertipikat)
         .route("/api/extract-sertipikat", post(handlers::extract_sertipikat_handler))
         .route("/api/sertipikat", post(handlers::extract_sertipikat_handler))
-        // PPh
-        .route("/api/extract-pph", post(handlers::extract_pph_handler))
-        .route("/api/pph", post(handlers::extract_pph_handler))
-        // PT Documents (Akta Pendirian & NPWP)
+        // PT Documents (Akta Pendirian, NPWP, & KTP Persetujuan)
         .route("/api/pt-files-info", get(handlers::get_pt_files_info_handler))
         .route("/api/pt-file", get(handlers::get_pt_file_download_handler))
         .route("/api/pt-file-download", get(handlers::get_pt_file_download_handler))
-        // Pembeli Documents (KK, KTP, PBB, BPHTB, PPh)
+        // Pembeli Documents (KK, KTP, PBB, BPHTB, PPh dari folder Pihak Kedua)
         .route("/api/pembeli-files-info", get(handlers::get_pembeli_files_info_handler))
         .route("/api/pembeli-file", get(handlers::get_pembeli_file_download_handler))
         .route("/api/extract-pembeli-bphtb", get(handlers::extract_pembeli_bphtb_handler))
         .route("/api/extract-pembeli-pph", get(handlers::extract_pembeli_pph_handler))
         // Saksi Documents (KTP Saksi G:\My Drive\notaris bu sri\Saksi)
-        .route("/api/saksi-files-info", get(handlers::get_saksi_files_info_handler))
         .route("/api/saksi-file", get(handlers::get_saksi_file_download_handler))
         .route("/api/saksi-file-download", get(handlers::get_saksi_file_download_handler))
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max upload
@@ -51,12 +44,14 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     println!("=======================================================");
     println!("  ⚡ Service Backend Terpadu (AutoFill PPAT) Aktif!    ");
     println!("  URL Server : http://127.0.0.1:{}", port);
-    println!("  Layanan Aktif Secara Bersamaan (Paralel):             ");
-    println!("  1. Akta & Pembeli : POST /api/extract-pembeli       ");
-    println!("  2. PBB & BPHTB    : POST /api/extract-bphtb         ");
-    println!("  3. Sertipikat     : POST /api/extract-sertipikat     ");
-    println!("  4. Bukti PPh      : POST /api/extract-pph           ");
-    println!("  5. PT Dokumen     : GET  /api/pt-file (Akta & NPWP) ");
+    println!("  Layanan Workflow Aktif:                              ");
+    println!("  1. Akta AJB        : POST /api/extract-pembeli       ");
+    println!("  2. Cek Sertipikat  : POST /api/extract-sertipikat     ");
+    println!("  3. Dokumen PT      : GET  /api/pt-file               ");
+    println!("  4. Dokumen Pembeli : GET  /api/pembeli-file          ");
+    println!("  5. Auto PBB/BPHTB  : GET  /api/extract-pembeli-bphtb ");
+    println!("  6. Auto PPh        : GET  /api/extract-pembeli-pph   ");
+    println!("  7. Dokumen Saksi   : GET  /api/saksi-file            ");
     println!("=======================================================");
 
     loop {

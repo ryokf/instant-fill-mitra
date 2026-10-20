@@ -322,62 +322,6 @@ PPAT.pphFiller = (() => {
     }
 
     /**
-     * Membuka dialog file picker secara otomatis pada input file (fallback manual).
-     */
-    async function triggerFilePicker(fileInput) {
-        if (!fileInput) return;
-
-        highlightFileWrapper(fileInput);
-
-        let pickerOpened = false;
-
-        if (typeof fileInput.showPicker === "function") {
-            try {
-                fileInput.showPicker();
-                pickerOpened = true;
-            } catch (e) {
-                console.warn("AutoFill PPAT: PPh fileInput.showPicker error:", e);
-            }
-        }
-
-        if (!pickerOpened) {
-            try {
-                fileInput.dispatchEvent(
-                    new MouseEvent("click", {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window,
-                    })
-                );
-            } catch (e) {}
-        }
-
-        try {
-            fileInput.click();
-        } catch (err) {
-            console.warn("AutoFill PPAT: PPh fileInput.click() error:", err);
-        }
-
-        dom.runInPageContext(() => {
-            const inp =
-                document.getElementById("txtUploadFileSSP") ||
-                document.getElementById("txtUploadFilePPH") ||
-                document.getElementById("txtUploadFilePPh");
-            if (inp) {
-                if (typeof inp.showPicker === "function") {
-                    try {
-                        inp.showPicker();
-                        return;
-                    } catch (e) {}
-                }
-                try {
-                    inp.click();
-                } catch (e) {}
-            }
-        });
-    }
-
-    /**
      * Mengisi Form PPh (Pajak Penghasilan / SSP).
      * Urutan eksekusi:
      * 1. Mengisi NPWP (#npwp) dan No. Suket (#kodeverifikasi).
@@ -460,10 +404,6 @@ PPAT.pphFiller = (() => {
         // ---------------------------------------------------------------------
         const fileInput = findInputFile(pphScope);
         if (fileInput) {
-            if (fileInput._ppatChangeHandler) {
-                fileInput.removeEventListener("change", fileInput._ppatChangeHandler);
-            }
-
             highlightFileWrapper(fileInput);
 
             const buyerName =
@@ -498,41 +438,20 @@ PPAT.pphFiller = (() => {
             // -----------------------------------------------------------------
             // 5. Dilanjutkan dengan Tombol Tambah
             // -----------------------------------------------------------------
-            if (autoUploaded) {
-                if (autoSubmit) {
-                    await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
-                    const btnTambah = findBtnTambah(pphScope);
-                    if (btnTambah) {
-                        const waitStart = Date.now();
-                        while (btnTambah.disabled && Date.now() - waitStart < 5000) {
-                            await dom.delay(100);
-                        }
-                        console.log("AutoFill PPAT: Menekan tombol Tambah PPh...");
-                        btnTambah.click();
+            if (autoUploaded && autoSubmit) {
+                await dom.delay(TIMING.SUBMIT_DELAY_MS + 350);
+                const btnTambah = findBtnTambah(pphScope);
+                if (btnTambah) {
+                    const waitStart = Date.now();
+                    while (btnTambah.disabled && Date.now() - waitStart < 5000) {
+                        await dom.delay(100);
                     }
-
-                    console.log("AutoFill PPAT: Menunggu PPh tersimpan di 'Daftar SSP/PPH'...");
-                    await waitForPphSaved(45000);
-                }
-            } else {
-                // Fallback manual jika berkas PPh tidak ditemukan di folder pembeli
-                console.log("AutoFill PPAT: Membuka dialog 'Pilih File' pada Section PPh...");
-                if (autoSubmit) {
-                    fileInput._ppatChangeHandler = async () => {
-                        if (fileInput.files && fileInput.files.length > 0) {
-                            await dom.delay(TIMING.SUBMIT_DELAY_MS + 250);
-                            const btnTambah = findBtnTambah(pphScope);
-                            if (btnTambah) {
-                                console.log("AutoFill PPAT: Berkas PPh terpilih, menekan tombol Tambah PPh...");
-                                btnTambah.click();
-                            }
-                            await waitForPphSaved(45000);
-                        }
-                    };
-                    fileInput.addEventListener("change", fileInput._ppatChangeHandler, { once: true });
+                    console.log("AutoFill PPAT: Menekan tombol Tambah PPh...");
+                    btnTambah.click();
                 }
 
-                await triggerFilePicker(fileInput);
+                console.log("AutoFill PPAT: Menunggu PPh tersimpan di 'Daftar SSP/PPH'...");
+                await waitForPphSaved(45000);
             }
         } else {
             console.warn("AutoFill PPAT: Tombol 'Pilih File' PPh tidak ditemukan.");
@@ -560,6 +479,5 @@ PPAT.pphFiller = (() => {
         findInputNpwp,
         findInputFile,
         findBtnTambah,
-        openPphFilePicker: () => triggerFilePicker(findInputFile(document.querySelector(S_PPH.container))),
     };
 })();

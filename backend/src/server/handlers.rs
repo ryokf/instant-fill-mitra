@@ -25,9 +25,9 @@ pub async fn health_check() -> Response {
             "version": "1.0.0",
             "endpoints": [
                 "/api/extract-pembeli",
-                "/api/extract-bphtb",
                 "/api/extract-sertipikat",
-                "/api/extract-pph"
+                "/api/extract-pembeli-bphtb",
+                "/api/extract-pembeli-pph"
             ]
         })),
     ).into_response()
@@ -178,54 +178,6 @@ pub async fn extract_pembeli_handler(multipart: Multipart) -> Response {
 }
 
 // -----------------------------------------------------------------------------
-// Handler: Extract BPHTB
-// -----------------------------------------------------------------------------
-pub async fn extract_bphtb_handler(multipart: Multipart) -> Response {
-    let (filename, bytes) = match extract_file_from_multipart(multipart, "bphtb.pdf").await {
-        Ok(data) => data,
-        Err(err_resp) => return err_resp,
-    };
-
-    println!("[API: BPHTB] Memproses berkas BPHTB: {} ({} bytes)...", filename, bytes.len());
-
-    let result = execute_winrt_task("bphtb_upload", &filename, &bytes, |path| async move {
-        process_bphtb_file(&path, 2.5).await
-    }).await;
-
-    match result {
-        Ok(res) => {
-            println!(
-                "[API: BPHTB] Berhasil - NOP: {}, Luas: {}, NJOP: {}, No. Bukti: {}",
-                res.data.nop, res.data.luas_tanah, res.data.njop_m2, res.data.nomor_bukti_pembayaran
-            );
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "message": "Data BPHTB berhasil diekstrak.",
-                    "data": res.data,
-                    "meta": {
-                        "page_number": res.page_number,
-                        "total_pages": res.total_pages,
-                        "rotation": res.rotation_applied
-                    }
-                })),
-            ).into_response()
-        }
-        Err((code, err_msg)) => {
-            eprintln!("[API: BPHTB] Gagal: {}", err_msg);
-            (
-                code,
-                Json(json!({
-                    "success": false,
-                    "error": format!("Gagal mengekstrak data BPHTB: {}", err_msg)
-                })),
-            ).into_response()
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
 // Handler: Extract Sertipikat
 // -----------------------------------------------------------------------------
 pub async fn extract_sertipikat_handler(multipart: Multipart) -> Response {
@@ -267,54 +219,6 @@ pub async fn extract_sertipikat_handler(multipart: Multipart) -> Response {
                 Json(json!({
                     "success": false,
                     "error": format!("Gagal mengekstrak data pengecekan sertipikat: {}", err_msg)
-                })),
-            ).into_response()
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Handler: Extract PPh
-// -----------------------------------------------------------------------------
-pub async fn extract_pph_handler(multipart: Multipart) -> Response {
-    let (filename, bytes) = match extract_file_from_multipart(multipart, "pph.pdf").await {
-        Ok(data) => data,
-        Err(err_resp) => return err_resp,
-    };
-
-    println!("[API: PPh] Memproses berkas PPh: {} ({} bytes)...", filename, bytes.len());
-
-    let result = execute_winrt_task("pph_upload", &filename, &bytes, |path| async move {
-        process_pph_file(&path, 2.0).await
-    }).await;
-
-    match result {
-        Ok(res) => {
-            println!(
-                "[API: PPh] Berhasil - No Suket: {}, NPWP: {}, WP: {}",
-                res.data.nomor_suket, res.data.npwp, res.data.nama_wp
-            );
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "message": "Data bukti PPh berhasil diekstrak.",
-                    "data": res.data,
-                    "meta": {
-                        "page_number": res.page_number,
-                        "total_pages": res.total_pages,
-                        "rotation": res.rotation_applied
-                    }
-                })),
-            ).into_response()
-        }
-        Err((code, err_msg)) => {
-            eprintln!("[API: PPh] Gagal: {}", err_msg);
-            (
-                code,
-                Json(json!({
-                    "success": false,
-                    "error": format!("Gagal mengekstrak data bukti PPh: {}", err_msg)
                 })),
             ).into_response()
         }
@@ -762,46 +666,12 @@ pub async fn extract_pembeli_pph_handler(Query(query): Query<PembeliInfoQuery>) 
 }
 
 // -----------------------------------------------------------------------------
-// Handler: Info & Download File KTP Saksi (G:\My Drive\notaris bu sri\Saksi)
+// Handler: Download File KTP Saksi (G:\My Drive\notaris bu sri\Saksi)
 // -----------------------------------------------------------------------------
 #[derive(Deserialize)]
 pub struct SaksiFileQuery {
     pub name: Option<String>,
     pub base_dir: Option<String>,
-}
-
-pub async fn get_saksi_files_info_handler(Query(query): Query<SaksiFileQuery>) -> Response {
-    let base_dir = query.base_dir.as_deref().unwrap_or(crate::services::saksi_files::DEFAULT_SAKSI_DIR);
-    let search_name = query.name.as_deref().unwrap_or("");
-
-    println!("[API: Saksi Info] Mencari berkas KTP saksi untuk query '{}' di '{}'...", search_name, base_dir);
-
-    match crate::services::saksi_files::find_saksi_ktp_file(base_dir, search_name) {
-        Some((filename, filepath, size)) => {
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "found": true,
-                    "filename": filename,
-                    "file_path": filepath.display().to_string(),
-                    "size": size,
-                })),
-            ).into_response()
-        }
-        None => {
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "found": false,
-                    "filename": null,
-                    "file_path": null,
-                    "size": null,
-                })),
-            ).into_response()
-        }
-    }
 }
 
 pub async fn get_saksi_file_download_handler(Query(query): Query<SaksiFileQuery>) -> Response {

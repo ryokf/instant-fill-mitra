@@ -175,16 +175,6 @@ PPAT.persetujuanFiller = (() => {
         return false;
     }
 
-    /**
-     * Memeriksa apakah seluruh pihak persetujuan dalam daftar (misal dari PT) sudah ada di ATR/BPN.
-     * @param {Array} list
-     * @returns {boolean}
-     */
-    function areAllPersetujuanInDaftar(list) {
-        if (!Array.isArray(list) || list.length === 0) return false;
-        return list.every((p) => isPersonAlreadyInDaftar(p.nama, p.nik));
-    }
-
     async function fill(data, options = {}) {
         const autoSubmit = options.autoSubmit ?? true;
         const forceFill = options.forceFill ?? false;
@@ -280,18 +270,6 @@ PPAT.persetujuanFiller = (() => {
 
             // Klik submitBtn langsung di content script
             submitBtn.click();
-
-            const autoUploadDocs = options.autoUploadDocs ?? false;
-            if (autoUploadDocs && PPAT.penjualUploadFiller) {
-                console.log("[PersetujuanFiller] Menunggu baris pihak persetujuan muncul di daftar...");
-                const btnUnggah = await dom.waitForElement(S.btnUnggah, 10000);
-                if (btnUnggah) {
-                    const ptName = options.ptName || PPAT.penjualUploadFiller.getActivePtNameFromPage();
-                    if (ptName) {
-                        await PPAT.penjualUploadFiller.uploadKtpPersetujuan(ptName, data.nama);
-                    }
-                }
-            }
             return true;
         } else {
             alert(MESSAGES.persetujuanFilled || "Data Pihak Persetujuan telah diisi.");
@@ -305,6 +283,5 @@ PPAT.persetujuanFiller = (() => {
         getFieldValues,
         isFormProperlyFilled,
         isPersonAlreadyInDaftar,
-        areAllPersetujuanInDaftar,
     };
 })();

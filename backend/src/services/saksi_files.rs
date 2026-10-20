@@ -1,15 +1,6 @@
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_SAKSI_DIR: &str = r"G:\My Drive\notaris bu sri\Saksi";
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SaksiFileInfo {
-    pub found: bool,
-    pub filename: Option<String>,
-    pub file_path: Option<String>,
-    pub size: Option<u64>,
-}
 
 /// Membersihkan string nama untuk pencocokan toleran (hanya alphanumeric, UPPERCASE)
 pub fn clean_name(s: &str) -> String {

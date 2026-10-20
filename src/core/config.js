@@ -4,16 +4,13 @@
  */
 PPAT.config = Object.freeze({
     BACKEND_URL: "http://127.0.0.1:3001/api/extract-pembeli",
-    BPHTB_BACKEND_URL: "http://127.0.0.1:3001/api/extract-bphtb",
     SERTIPIKAT_BACKEND_URL: "http://127.0.0.1:3001/api/extract-sertipikat",
-    PPH_BACKEND_URL: "http://127.0.0.1:3001/api/extract-pph",
     PT_FILE_INFO_URL: "http://127.0.0.1:3001/api/pt-files-info",
     PT_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pt-file",
     PEMBELI_FILES_INFO_URL: "http://127.0.0.1:3001/api/pembeli-files-info",
     PEMBELI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/pembeli-file",
     EXTRACT_PEMBELI_BPHTB_URL: "http://127.0.0.1:3001/api/extract-pembeli-bphtb",
     EXTRACT_PEMBELI_PPH_URL: "http://127.0.0.1:3001/api/extract-pembeli-pph",
-    SAKSI_FILE_INFO_URL: "http://127.0.0.1:3001/api/saksi-files-info",
     SAKSI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/saksi-file",
 
     TIMING: Object.freeze({
@@ -33,7 +30,6 @@ PPAT.config = Object.freeze({
         SIDEBAR_TIMEOUT_MS: 15000,
         FORM_SETTLE_DELAY_MS: 300, // jeda agar form hasil AJAX selesai dirender
         SUBMIT_DELAY_MS: 250, // jeda setelah input terisi sebelum menekan Tambah
-        DETECT_INTERVAL_MS: 2500, // pengecekan berkala daftar penjual di web
     }),
 
     DEFAULTS: Object.freeze({
@@ -253,7 +249,6 @@ PPAT.config = Object.freeze({
             "Form Pihak Persetujuan tidak ditemukan. Pastikan Anda berada di seksi E (Pihak Persetujuan).",
         persetujuanFilled: "Data Pihak Persetujuan berhasil diisi!\nSilakan periksa dan klik 'Tambah'.",
         saksiFormMissing: "Form Saksi tidak ditemukan. Pastikan Anda berada di halaman pembuatan Akta PPAT.",
-        saksiFilled: (nama) => `Data Saksi (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
         pembeliFormMissing: "Form Pihak Pembeli tidak ditemukan. Pastikan Anda berada di bagian Pihak Pembeli (Pihak 2).",
         pembeliFilled: (nama) => `Data Pembeli (${nama}) berhasil diisi!\nSilakan periksa dan klik 'Tambah'.`,
         berkasFormMissing: "Form Pencarian Berkas (#nmrberkas) tidak ditemukan di halaman ini.",
@@ -271,10 +266,7 @@ PPAT.config = Object.freeze({
         bphtbFilled: "Data BPHTB berhasil diisi!",
         pphFormMissing: "Form PPh tidak ditemukan di halaman PPAT.",
         pphFilled: "Data PPh berhasil diisi!",
-        selectPtFirst: "Pilih PT terlebih dahulu!",
         backendOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
-        backendBphtbOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
         backendSertipikatOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
-        backendPphOffline: "Service backend belum aktif di http://127.0.0.1:3001.\nSilakan jalankan start-backend.bat terlebih dahulu.",
     }),
 });
