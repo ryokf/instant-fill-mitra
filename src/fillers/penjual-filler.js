@@ -194,6 +194,16 @@ PPAT.penjualFiller = (() => {
                     if (btn) btn.click();
                 }, SP.btnTambah);
                 submitBtn.click();
+
+                const autoUploadDocs = options.autoUploadDocs ?? true;
+                if (autoUploadDocs && PPAT.penjualUploadFiller) {
+                    console.log("[PenjualFiller] Menunggu tombol Unggah muncul di daftar penjual perorangan...");
+                    const btnUnggah = await dom.waitForElement(config.SELECTORS.penjualUpload.btnUnggah, 10000);
+                    if (btnUnggah) {
+                        await dom.delay(400);
+                        await PPAT.penjualUploadFiller.runAutoUploadPerorangan(data.nama, options.buyerName);
+                    }
+                }
             }
         } else if (options.showAlert) {
             alert(MESSAGES.penjualPeroranganFilled(data.nama));

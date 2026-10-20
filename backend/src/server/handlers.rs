@@ -388,8 +388,14 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
     match pembeli_files::get_pembeli_info(base_dir, &query.buyer_name) {
         Ok(info) => {
             println!(
-                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}, PBB: {:?}, BPHTB: {:?}, PPh: {:?}",
-                info.folder_name, info.kk.filename, info.ktp.filename, info.pbb.filename, info.bphtb.filename, info.pph.filename
+                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}, PBB: {:?}, BPHTB: {:?}, PPh: {:?}, KTP Persetujuan: {:?}",
+                info.folder_name,
+                info.kk.filename,
+                info.ktp.filename,
+                info.pbb.filename,
+                info.bphtb.filename,
+                info.pph.filename,
+                info.ktp_persetujuan.as_ref().and_then(|k| k.filename.clone())
             );
             (
                 StatusCode::OK,
@@ -403,6 +409,7 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
                         "pbb": info.pbb.filename,
                         "bphtb": info.bphtb.filename,
                         "pph": info.pph.filename,
+                        "ktp_persetujuan": info.ktp_persetujuan.as_ref().and_then(|k| k.filename.clone()),
                     }
                 })),
             ).into_response()

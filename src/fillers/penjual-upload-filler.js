@@ -8,6 +8,9 @@ PPAT.penjualUploadFiller = (() => {
     const { SELECTORS, TIMING } = config;
     const S = SELECTORS.penjualUpload;
 
+    let isUploadingPerorangan = false;
+    let watcherInitialized = false;
+
     /**
      * Membaca nama PT yang saat ini tercatat di baris Penjual (Pihak 1) pada website ATR/BPN.
      * @returns {string|null} Nama PT atau null jika belum ada
@@ -25,6 +28,57 @@ PPAT.penjualUploadFiller = (() => {
     }
 
     /**
+     * Membaca nama Penjual yang saat ini tercatat di baris Penjual (Pihak 1) pada website ATR/BPN.
+     * @returns {string|null} Nama Penjual atau null jika belum ada
+     */
+    function getActiveSellerNameFromPage() {
+        const rows = document.querySelectorAll(`${S.btnUnggah}, ${SELECTORS.daftarPenjual}, #daftarpihak1placeholder li, #daftarpihak1placeholder blockquote`);
+        for (const row of rows) {
+            const bq = row.matches("blockquote") ? row : (row.querySelector("blockquote") || row);
+            const rawHtml = bq.innerHTML || "";
+            const cleanText = rawHtml.replace(/<br\s*[\/]?>/gi, "\n").replace(/<[^>]+>/g, "");
+            const textToMatch = cleanText || bq.innerText || bq.textContent || "";
+            const match = textToMatch.match(/Nama\s*:\s*([^<\n\r]+)/i);
+            if (match && match[1]) {
+                let found = match[1].trim();
+                found = found.split(/Alamat\s*:|NIK\s*:|Email\s*:/i)[0].trim();
+                if (found && found !== "-") {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Mendapatkan nama pembeli aktif untuk mencari folder G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli].
+     * @param {string} [explicitBuyerName] Nama pembeli jika sudah diketahui secara eksplisit
+     * @returns {string} Nama pembeli atau string kosong jika belum ditemukan
+     */
+    function resolveBuyerName(explicitBuyerName) {
+        if (explicitBuyerName && typeof explicitBuyerName === "string" && explicitBuyerName.trim() && explicitBuyerName.trim() !== "-") {
+            return explicitBuyerName.trim();
+        }
+        if (PPAT.activePembeliData && PPAT.activePembeliData.nama && PPAT.activePembeliData.nama.trim() !== "-") {
+            return PPAT.activePembeliData.nama.trim();
+        }
+        if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.getActiveBuyerName === "function") {
+            const fromUploadFiller = PPAT.pembeliUploadFiller.getActiveBuyerName();
+            if (fromUploadFiller) return fromUploadFiller;
+        }
+        try {
+            const saved = localStorage.getItem("ppat_saved_buyer_name");
+            if (saved && saved.trim() && saved.trim() !== "-") return saved.trim();
+        } catch (_) {}
+
+        if (PPAT.activeBphtbData && PPAT.activeBphtbData.nama_wajib_pajak) {
+            const n = PPAT.activeBphtbData.nama_wajib_pajak.trim();
+            if (n && n !== "-") return n;
+        }
+        return "";
+    }
+
+    /**
      * Mengonversi Blob ke Base64 string.
      */
     function blobToBase64(blob) {
@@ -38,6 +92,102 @@ PPAT.penjualUploadFiller = (() => {
             reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
+    }
+
+    /**
+     * Mengambil info berkas di folder Pihak Kedua\[nama pembeli] via backend port 3001.
+     */
+    async function fetchBuyerInfo(buyerName) {
+        if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.fetchPembeliInfo === "function") {
+            return await PPAT.pembeliUploadFiller.fetchPembeliInfo(buyerName);
+        }
+        const url = `${config.PEMBELI_FILES_INFO_URL}?buyer_name=${encodeURIComponent(buyerName)}`;
+        const resp = await fetch(url);
+        return await resp.json();
+    }
+
+    /**
+     * Mengunduh berkas KK / KTP dari folder Pihak Kedua\[nama pembeli] via backend port 3001.
+     */
+    async function downloadBuyerDocument(buyerName, docType) {
+        if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.downloadPembeliDocument === "function") {
+            return await PPAT.pembeliUploadFiller.downloadPembeliDocument(buyerName, docType);
+        }
+        const url = `${config.PEMBELI_FILE_DOWNLOAD_URL}?buyer_name=${encodeURIComponent(buyerName)}&doc_type=${encodeURIComponent(docType)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) {
+            let errorText = `Status HTTP: ${resp.status}`;
+            try {
+                const errJson = await resp.json();
+                if (errJson.error) errorText = errJson.error;
+            } catch (_) {}
+            throw new Error(errorText);
+        }
+
+        const fileNameHeader = resp.headers.get("x-file-name");
+        const docLower = (docType || "").toLowerCase();
+        let defaultFilename = "DOKUMEN.pdf";
+        if (docLower === "kk" || docLower === "kk_penjual") defaultFilename = "KK.pdf";
+        else if (docLower === "ktp" || docLower === "ktp_penjual") defaultFilename = "KTP.pdf";
+        else if (docLower === "ktp_persetujuan" || docLower.includes("persetujuan")) defaultFilename = "KTP PERSETUJUAN.pdf";
+
+        const filename = fileNameHeader || defaultFilename;
+        const blob = await resp.blob();
+        const base64 = await blobToBase64(blob);
+
+        return { filename, base64, blob, mimeType: blob.type || "application/pdf" };
+    }
+
+    /**
+     * Mencari baris dan tombol Unggah Penjual di #daftarpihak1placeholder.
+     */
+    async function waitForPenjualRow(sellerName, timeoutMs = 10000) {
+        const startTime = Date.now();
+        const searchName = (sellerName || "").trim().toLowerCase();
+
+        while (Date.now() - startTime < timeoutMs) {
+            const container = document.querySelector("#daftarpihak1placeholder");
+            if (container) {
+                const rows = Array.from(container.querySelectorAll("li, tr, blockquote"));
+                for (const row of rows) {
+                    const bq = row.matches("blockquote") ? row : (row.querySelector("blockquote") || row);
+                    const rowText = (bq ? bq.innerText || bq.textContent : row.innerText || "").toLowerCase();
+
+                    let isMatch = false;
+                    if (!searchName) {
+                        isMatch = true;
+                    } else if (rowText.includes(searchName)) {
+                        isMatch = true;
+                    } else {
+                        const tokens = searchName.split(/\s+/).filter((t) => t.length > 2);
+                        if (tokens.length > 0 && tokens.every((t) => rowText.includes(t))) {
+                            isMatch = true;
+                        }
+                    }
+
+                    if (isMatch) {
+                        const btn = (row.matches("li, tr") ? row : row.closest("li, tr") || container)
+                            .querySelector("a[onclick*='unggahpihakakta']");
+                        if (btn) return btn;
+                    }
+                }
+
+                const allBtns = container.querySelectorAll("a[onclick*='unggahpihakakta']");
+                if (allBtns.length === 1) {
+                    return allBtns[0];
+                }
+                if (allBtns.length > 0 && !searchName) {
+                    return allBtns[allBtns.length - 1];
+                }
+            }
+
+            const fallbackBtn = document.querySelector(S.btnUnggah);
+            if (fallbackBtn && !searchName) return fallbackBtn;
+
+            await dom.delay(100);
+        }
+
+        return document.querySelector(S.btnUnggah);
     }
 
     /**
@@ -255,7 +405,7 @@ PPAT.penjualUploadFiller = (() => {
      * Mengirimkan file ke Page Bridge (Main World) untuk diset ke window.dfupload2
      * dan memicu fungsi simpandokumenupload2().
      */
-    function sendUploadToMainWorld(base64, filename, tipeValue) {
+    function sendUploadToMainWorld(base64, filename, tipeValue, extraData = {}) {
         return new Promise((resolve) => {
             const timeout = setTimeout(() => {
                 cleanup();
@@ -282,6 +432,10 @@ PPAT.penjualUploadFiller = (() => {
                 filename,
                 mimeType: "application/pdf",
                 tipeValue,
+                pihak: extraData.pihak || "Pihak 1",
+                idreferensi: extraData.idreferensi,
+                aktanoninput: extraData.aktanoninput,
+                tipeunggahfile: extraData.tipeunggahfile,
             };
 
             window.postMessage(payload, "*");
@@ -289,7 +443,7 @@ PPAT.penjualUploadFiller = (() => {
     }
 
     /**
-     * Menjalankan satu tahap upload (Akta Pendirian, NPWP, atau KTP Persetujuan):
+     * Menjalankan satu tahap upload (Akta Pendirian, NPWP, KK, atau KTP):
      * 1. Gunakan berkas yang sudah/sedang diunduh dari backend secara paralel
      * 2. Klik tombol "Unggah" seketika
      * 3. Tunggu sidebar upload siap
@@ -330,6 +484,27 @@ PPAT.penjualUploadFiller = (() => {
                 };
             }
 
+            // Ekstrak info referensi jika ada dari baris atau onclick tombol
+            let refId = null;
+            let pihak = "Pihak 1";
+            let aktaId = null;
+            let tipeUnggahFile = null;
+            const parentRow = btnUnggah.closest("li, tr, blockquote") || btnUnggah.parentElement;
+            const pUrl = parentRow ? parentRow.querySelector("p.url[data-refid]") : null;
+            if (pUrl) {
+                refId = pUrl.getAttribute("data-refid");
+                pihak = pUrl.getAttribute("data-pihak") || "Pihak 1";
+                aktaId = pUrl.getAttribute("data-aktaid");
+                tipeUnggahFile = pUrl.getAttribute("data-tipepihak");
+            } else {
+                const onclickAttr = btnUnggah.getAttribute("onclick") || "";
+                const m = onclickAttr.match(/unggahpihakakta\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]/);
+                if (m) {
+                    refId = m[1];
+                    pihak = m[2];
+                }
+            }
+
             // Pastikan tidak ada backdrop yang menutupi
             forceCleanupModalDom();
 
@@ -362,38 +537,71 @@ PPAT.penjualUploadFiller = (() => {
 
             // Tentukan value opsi yang cocok pada dropdown
             let selectedValue = null;
+            const docLower = (docType || "").toLowerCase();
+
             for (let i = 0; i < select.options.length; i++) {
                 const opt = select.options[i];
-                if (preferredOptionValue && opt.value === preferredOptionValue) {
-                    selectedValue = opt.value;
-                    break;
-                }
-                const optTextUpper = opt.text.toUpperCase();
-                const optValUpper = opt.value.toUpperCase();
+                const optTextUpper = (opt.text || "").toUpperCase();
+                const optValUpper = (opt.value || "").toUpperCase();
 
-                if (docType === "akta" && (optValUpper.includes("AKTA") || optTextUpper.includes("AKTA"))) {
+                if (preferredOptionValue && (opt.value === preferredOptionValue || optValUpper === preferredOptionValue.toUpperCase())) {
                     selectedValue = opt.value;
                     break;
                 }
-                if (docType === "npwp" && (optValUpper.includes("NPWP") || optTextUpper.includes("NPWP"))) {
-                    selectedValue = opt.value;
-                    break;
-                }
-                if (docType === "ktp" && (optValUpper.includes("KTP") || optTextUpper.includes("KTP"))) {
-                    selectedValue = opt.value;
-                    break;
+
+                if (docLower === "kk") {
+                    if (optValUpper.includes("KK") || optValUpper.includes("KELUARGA") || optTextUpper.includes("KK") || optTextUpper.includes("KELUARGA")) {
+                        selectedValue = opt.value;
+                        break;
+                    }
+                } else if (docLower === "ktp") {
+                    if (optValUpper.includes("KTP") || optValUpper.includes("IDENTITAS") || optTextUpper.includes("KTP") || optTextUpper.includes("IDENTITAS")) {
+                        selectedValue = opt.value;
+                        break;
+                    }
+                } else if (docLower === "akta") {
+                    if (optValUpper.includes("AKTA") || optTextUpper.includes("AKTA")) {
+                        selectedValue = opt.value;
+                        break;
+                    }
+                } else if (docLower === "npwp") {
+                    if (optValUpper.includes("NPWP") || optTextUpper.includes("NPWP")) {
+                        selectedValue = opt.value;
+                        break;
+                    }
                 }
             }
 
             if (!selectedValue && select.options.length > 0) {
-                selectedValue = select.options[0].value;
+                if (docLower === "kk") {
+                    const fallbackOpt = Array.from(select.options).find((o) =>
+                        (o.value || "").toUpperCase().includes("KK") || (o.text || "").toUpperCase().includes("KK") ||
+                        (o.value || "").toUpperCase().includes("KELUARGA") || (o.text || "").toUpperCase().includes("KELUARGA")
+                    );
+                    if (fallbackOpt) selectedValue = fallbackOpt.value;
+                } else if (docLower === "ktp") {
+                    const fallbackOpt = Array.from(select.options).find((o) =>
+                        (o.value || "").toUpperCase().includes("KTP") || (o.text || "").toUpperCase().includes("KTP") ||
+                        (o.value || "").toUpperCase().includes("IDENTITAS") || (o.text || "").toUpperCase().includes("IDENTITAS")
+                    );
+                    if (fallbackOpt) selectedValue = fallbackOpt.value;
+                }
+                if (!selectedValue) {
+                    const firstValid = Array.from(select.options).find((o) => o.value && o.value.trim() !== "");
+                    selectedValue = firstValid ? firstValid.value : select.options[0].value;
+                }
             }
 
             await dom.delay(50);
 
             // Suntikkan file ke elemen input dan window.dfupload2 via Page Bridge (Main World)
             console.log(`[AutoUpload] Mengirim berkas '${actualFilename}' ke Page Bridge (Main World)...`);
-            const bridgeRes = await sendUploadToMainWorld(base64, actualFilename, selectedValue);
+            const bridgeRes = await sendUploadToMainWorld(base64, actualFilename, selectedValue, {
+                pihak,
+                idreferensi: refId,
+                aktanoninput: aktaId,
+                tipeunggahfile: tipeUnggahFile,
+            });
             if (!bridgeRes.success) {
                 return {
                     success: false,
@@ -503,6 +711,10 @@ PPAT.penjualUploadFiller = (() => {
 
         // Cari data seluruh personil Pihak Persetujuan dari database
         const ptKey = PPAT.ptMatcher ? PPAT.ptMatcher.findPtKeyByName(ptName) : null;
+        if (!ptKey && (PPAT.activePenjualPerorangan || document.querySelector("#frmtipepihak1Dukcapil") || document.querySelector("#daftarpihak1placeholder"))) {
+            console.log(`[AutoUpload] '${ptName}' bukan nama PT di ptDatabase, mengalihkan ke upload Penjual Perorangan...`);
+            return await runAutoUploadPerorangan(ptName);
+        }
         const persetujuanList = (ptKey && PPAT.ptDatabase[ptKey]) ? PPAT.ptDatabase[ptKey].persetujuan : [];
 
         // 1. Cek informasi folder dan file di backend port 3001
@@ -735,14 +947,388 @@ PPAT.penjualUploadFiller = (() => {
         }
     }
 
+    /**
+     * Menjalankan otomatisasi upload dokumen KK dan KTP untuk Penjual Perorangan.
+     * Mengunduh berkas KK dan KTP dari folder G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli]
+     * dan mengunggahnya secara sekuensial ke baris Penjual (Pihak 1) di website ATR/BPN.
+     *
+     * @param {string} [sellerNameInput] Nama penjual
+     * @param {string} [buyerNameInput] Nama pembeli (folder target)
+     */
+    async function runAutoUploadPerorangan(sellerNameInput, buyerNameInput) {
+        if (isUploadingPerorangan) {
+            console.warn("[AutoUploadPenjualPerorangan] Upload sedang berlangsung. Abaikan panggilan ganda.");
+            return { success: false, error: "Upload sedang berlangsung" };
+        }
+
+        const sellerName = (
+            sellerNameInput ||
+            (PPAT.activePenjualPerorangan && PPAT.activePenjualPerorangan.nama) ||
+            getActiveSellerNameFromPage() ||
+            "Penjual Perorangan"
+        ).trim();
+
+        // 1. Dapatkan nama pembeli untuk folder target Pihak Kedua\[nama pembeli]
+        let buyerName = resolveBuyerName(buyerNameInput);
+
+        // Jika belum tersedia seketika, beri jeda singkat untuk memastikan data AJB selesai diset
+        if (!buyerName) {
+            console.log("[AutoUploadPenjualPerorangan] Menunggu deteksi nama pembeli...");
+            for (let i = 0; i < 8; i++) {
+                await dom.delay(250);
+                buyerName = resolveBuyerName();
+                if (buyerName) break;
+            }
+        }
+
+        if (!buyerName) {
+            const promptName = prompt(
+                "Nama pembeli belum terdeteksi otomatis.\nMasukkan nama pembeli untuk mencari folder di:\nG:\\My Drive\\notaris bu sri\\Pihak Kedua\\[nama pembeli]:"
+            );
+            if (promptName && promptName.trim()) {
+                buyerName = promptName.trim();
+                if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.saveActiveBuyerName === "function") {
+                    PPAT.pembeliUploadFiller.saveActiveBuyerName(buyerName);
+                }
+            } else {
+                alert("Upload dibatalkan: Nama pembeli diperlukan untuk menentukan lokasi folder KK dan KTP di Pihak Kedua.");
+                return { success: false, error: "Nama pembeli tidak ditentukan" };
+            }
+        }
+
+        isUploadingPerorangan = true;
+        console.log(`[AutoUploadPenjualPerorangan] Memulai otomatisasi upload KK & KTP Penjual (${sellerName}) dari folder Pihak Kedua: '${buyerName}'...`);
+
+        try {
+            // 2. Cek ketersediaan file KK dan KTP di folder pembeli via backend port 3001
+            let info;
+            try {
+                info = await fetchBuyerInfo(buyerName);
+            } catch (err) {
+                console.error("[AutoUploadPenjualPerorangan] Gagal menghubungi service backend:", err);
+                alert(
+                    `Gagal menghubungi service backend di http://127.0.0.1:3001.\n` +
+                    `Pastikan backend sudah aktif (jalankan start-backend.bat).\n\n` +
+                    `Detail: ${err.message}`
+                );
+                return { success: false, error: err.message };
+            }
+
+            if (!info || !info.success) {
+                const errMsg = (info && info.error) || `Folder untuk pembeli '${buyerName}' tidak ditemukan di folder Pihak Kedua.`;
+                alert(`⚠️ ${errMsg}\n\nPeriksa folder di:\nG:\\My Drive\\notaris bu sri\\Pihak Kedua\\${buyerName}`);
+                return { success: false, error: errMsg };
+            }
+
+            const pembeliData = info.data || info;
+            const folderName = pembeliData.folder_name || pembeliData.folder || info.folder || buyerName;
+
+            const kkObj = pembeliData.kk || (info.files && info.files.kk) || {};
+            const ktpObj = pembeliData.ktp || (info.files && info.files.ktp) || {};
+
+            const kkFound = typeof kkObj === "object" ? Boolean(kkObj.found) : Boolean(kkObj);
+            const ktpFound = typeof ktpObj === "object" ? Boolean(ktpObj.found) : Boolean(ktpObj);
+
+            const kkFilename = (typeof kkObj === "object" ? kkObj.filename : kkObj) || "KK.pdf";
+            const ktpFilename = (typeof ktpObj === "object" ? ktpObj.filename : ktpObj) || "KTP.pdf";
+
+            console.log(`[AutoUploadPenjualPerorangan] Folder Pihak Kedua terkonfirmasi: '${folderName}'. KK: ${kkFilename} (found: ${kkFound}), KTP: ${ktpFilename} (found: ${ktpFound})`);
+
+            if (!kkFound && !ktpFound) {
+                alert(
+                    `⚠️ Berkas KK dan KTP tidak ditemukan di dalam folder:\n` +
+                    `G:\\My Drive\\notaris bu sri\\Pihak Kedua\\${folderName}\n\n` +
+                    `Pastikan berkas KK dan KTP tersedia.`
+                );
+                return { success: false, error: "Berkas KK dan KTP tidak ditemukan" };
+            }
+
+            // 3. Pre-load download berkas KK & KTP secara paralel di latar belakang
+            console.log(`[AutoUploadPenjualPerorangan] Mengunduh KK & KTP secara paralel di latar belakang...`);
+            const kkPromise = kkFound
+                ? downloadBuyerDocument(buyerName, "kk_penjual")
+                : Promise.resolve(null);
+            const ktpPromise = ktpFound
+                ? downloadBuyerDocument(buyerName, "ktp_penjual")
+                : Promise.resolve(null);
+
+            const results = {
+                seller: sellerName,
+                buyer: buyerName,
+                folder: folderName,
+                kk: { filename: kkFilename, success: false, error: null },
+                ktp: { filename: ktpFilename, success: false, error: null },
+            };
+
+            // 4. Cari tombol Unggah untuk baris Penjual di #daftarpihak1placeholder
+            let btnUnggah = await waitForPenjualRow(sellerName, 8000);
+            if (!btnUnggah) {
+                alert(`Tombol 'Unggah' untuk pihak penjual '${sellerName}' tidak ditemukan di daftar pihak 1.`);
+                return { success: false, error: "Tombol Unggah pihak 1 tidak ditemukan" };
+            }
+
+            // 5. Langkah 1: Upload Kartu Keluarga Penjual (KK -> KKPENJUAL)
+            if (kkFound) {
+                console.log(`[AutoUploadPenjualPerorangan] [1/2] Mengunggah Kartu Keluarga (KK) Penjual...`);
+                const resKk = await executeUploadStep(
+                    sellerName,
+                    "kk",
+                    kkFilename,
+                    "KKPENJUAL",
+                    kkPromise,
+                    btnUnggah
+                );
+                if (resKk.success) {
+                    results.kk.success = true;
+                    results.kk.filename = resKk.filename || kkFilename;
+                    console.log(`[AutoUploadPenjualPerorangan] ✔ KK Penjual berhasil diunggah: ${results.kk.filename}`);
+                } else {
+                    results.kk.error = resKk.error;
+                    console.warn(`[AutoUploadPenjualPerorangan] Gagal mengunggah KK Penjual:`, resKk.error);
+                }
+
+                await dismissModalAndEnsureClosed();
+                forceCleanupModalDom();
+                await dom.delay(400);
+            } else {
+                results.kk.error = `Berkas KK tidak ditemukan di dalam folder '${folderName}'.`;
+            }
+
+            // 6. Langkah 2: Upload KTP Penjual (KTP -> KTPPENJUAL)
+            if (ktpFound) {
+                console.log(`[AutoUploadPenjualPerorangan] [2/2] Mengunggah KTP Penjual...`);
+                btnUnggah = (await waitForPenjualRow(sellerName, 5000)) || btnUnggah;
+                const resKtp = await executeUploadStep(
+                    sellerName,
+                    "ktp",
+                    ktpFilename,
+                    "KTPPENJUAL",
+                    ktpPromise,
+                    btnUnggah
+                );
+                if (resKtp.success) {
+                    results.ktp.success = true;
+                    results.ktp.filename = resKtp.filename || ktpFilename;
+                    console.log(`[AutoUploadPenjualPerorangan] ✔ KTP Penjual berhasil diunggah: ${results.ktp.filename}`);
+                } else {
+                    results.ktp.error = resKtp.error;
+                    console.warn(`[AutoUploadPenjualPerorangan] Gagal mengunggah KTP Penjual:`, resKtp.error);
+                }
+
+                await dismissModalAndEnsureClosed();
+                forceCleanupModalDom();
+                await dom.delay(350);
+            } else {
+                results.ktp.error = `Berkas KTP tidak ditemukan di dalam folder '${folderName}'.`;
+            }
+
+            // 7. Langkah 3: Upload KTP Pihak Persetujuan (jika ada persetujuan atau berkas KTP PERSETUJUAN.pdf)
+            const personName = (PPAT.activePersetujuanPerorangan && PPAT.activePersetujuanPerorangan.nama) || "";
+            const hasPersetujuanInWeb = Boolean(document.querySelector(config.SELECTORS.persetujuan.btnUnggah));
+            const ktpPersetujuanFound = pembeliData.ktp_persetujuan && pembeliData.ktp_persetujuan.found;
+
+            if (personName || hasPersetujuanInWeb || ktpPersetujuanFound) {
+                console.log(`[AutoUploadPenjualPerorangan] [3/3] Memeriksa dan mengunggah KTP Pihak Persetujuan (${personName || "Persetujuan"})...`);
+
+                // Pastikan pihak persetujuan sudah masuk di daftar web jika ada data personilnya
+                if (personName && !isPersonInDaftar(personName, PPAT.activePersetujuanPerorangan && PPAT.activePersetujuanPerorangan.nik) && PPAT.persetujuanFiller) {
+                    console.log(`[AutoUploadPenjualPerorangan] Mengisi form Pihak Persetujuan '${personName}' terlebih dahulu...`);
+                    await PPAT.persetujuanFiller.ensurePersetujuanForm();
+                    await PPAT.persetujuanFiller.fill(PPAT.activePersetujuanPerorangan, { autoSubmit: true });
+                    await dom.delay(600);
+                }
+
+                const resPersetujuan = await uploadPersetujuanPerorangan(personName, buyerName);
+                if (resPersetujuan) {
+                    results.persetujuan = {
+                        person: personName || "Pihak Persetujuan",
+                        filename: resPersetujuan.filename || "KTP PERSETUJUAN.pdf",
+                        success: resPersetujuan.success,
+                        error: resPersetujuan.error,
+                    };
+                }
+            }
+
+            // 8. Notifikasi status hasil akhir
+            notifyPeroranganUploadResults(results);
+            return results;
+        } catch (err) {
+            console.error("[AutoUploadPenjualPerorangan] Error fatal dalam alur upload:", err);
+            alert(`Terjadi kesalahan pada otomatisasi upload berkas penjual perorangan:\n${err.message || err}`);
+            return { success: false, error: err.message || String(err) };
+        } finally {
+            isUploadingPerorangan = false;
+        }
+    }
+
+    /**
+     * Mengunggah berkas KTP Pihak Persetujuan untuk Penjual Perorangan.
+     * Lokasi file: G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli]\KTP PERSETUJUAN.pdf
+     */
+    async function uploadPersetujuanPerorangan(personNameInput, buyerNameInput) {
+        const personName = (
+            personNameInput ||
+            (PPAT.activePersetujuanPerorangan && PPAT.activePersetujuanPerorangan.nama) ||
+            ""
+        ).trim();
+
+        const buyerName = resolveBuyerName(buyerNameInput);
+        if (!buyerName) {
+            console.warn("[UploadPersetujuan] Nama pembeli tidak ditemukan.");
+            return { success: false, error: "Nama pembeli tidak ditemukan" };
+        }
+
+        console.log(`[UploadPersetujuan] Memulai upload KTP Persetujuan '${personName || "-"}' dari folder Pihak Kedua '${buyerName}'...`);
+
+        // 1. Cek info file di backend
+        let info;
+        try {
+            info = await fetchBuyerInfo(buyerName);
+        } catch (err) {
+            console.error("[UploadPersetujuan] Gagal menghubungi backend:", err);
+            return { success: false, error: err.message };
+        }
+
+        const pembeliData = info.data || info;
+        const folderName = pembeliData.folder_name || pembeliData.folder || info.folder || buyerName;
+        const ktpPersetujuanObj = pembeliData.ktp_persetujuan || (info.files && info.files.ktp_persetujuan);
+
+        let filename = "KTP PERSETUJUAN.pdf";
+        if (typeof ktpPersetujuanObj === "object" && ktpPersetujuanObj !== null) {
+            if (ktpPersetujuanObj.filename) filename = ktpPersetujuanObj.filename;
+        } else if (typeof ktpPersetujuanObj === "string" && ktpPersetujuanObj) {
+            filename = ktpPersetujuanObj;
+        }
+
+        // 2. Download berkas KTP Persetujuan
+        console.log(`[UploadPersetujuan] Mengunduh '${filename}' dari folder '${folderName}'...`);
+        let docPromise;
+        try {
+            docPromise = downloadBuyerDocument(buyerName, "ktp_persetujuan");
+        } catch (err) {
+            console.warn("[UploadPersetujuan] Gagal download berkas KTP Persetujuan:", err);
+            return { success: false, error: err.message };
+        }
+
+        // 3. Cari tombol Unggah untuk baris Pihak Persetujuan di #daftarpemohonpihaksetujuplaceholder
+        const btnUnggah = await waitForPersetujuanRow(personName, 0, 10000);
+        if (!btnUnggah) {
+            const errMsg = `Tombol Unggah untuk Pihak Persetujuan '${personName || "-"}' tidak ditemukan di daftar pihak persetujuan.`;
+            console.warn(`[UploadPersetujuan] ${errMsg}`);
+            return { success: false, error: errMsg };
+        }
+
+        // 4. Eksekusi upload step
+        const res = await executeUploadStep(
+            personName || "Persetujuan",
+            "ktp",
+            filename,
+            null,
+            docPromise,
+            btnUnggah
+        );
+
+        if (res.success) {
+            console.log(`[UploadPersetujuan] ✔ KTP Persetujuan '${personName || "-"}' berhasil diunggah: ${res.filename}`);
+            await dismissModalAndEnsureClosed();
+            forceCleanupModalDom();
+        } else {
+            console.warn(`[UploadPersetujuan] Gagal upload KTP Persetujuan '${personName || "-"}':`, res.error);
+        }
+
+        return res;
+    }
+
+    /**
+     * Menampilkan notifikasi popup / alert mengenai status upload berkas Penjual Perorangan.
+     */
+    function notifyPeroranganUploadResults(results) {
+        const kkOk = Boolean(results.kk && results.kk.success);
+        const ktpOk = Boolean(results.ktp && results.ktp.success);
+        const persetujuanOk = results.persetujuan ? Boolean(results.persetujuan.success) : true;
+        const kkFilename = (results.kk && results.kk.filename) || "KK.pdf";
+        const ktpFilename = (results.ktp && results.ktp.filename) || "KTP.pdf";
+
+        if (kkOk && ktpOk && persetujuanOk) {
+            let msg = `✅ Berkas Penjual Perorangan (${results.seller}) dari folder Pihak Kedua (${results.folder}) berhasil diunggah ke website ATR/BPN:\n\n` +
+                      `1. Kartu Keluarga (KK): ${kkFilename} (Berhasil)\n` +
+                      `2. KTP Penjual: ${ktpFilename} (Berhasil)\n`;
+            if (results.persetujuan) {
+                msg += `3. KTP Persetujuan (${results.persetujuan.person}): ${results.persetujuan.filename || "KTP PERSETUJUAN.pdf"} (Berhasil)\n`;
+            }
+            alert(msg);
+            console.log(msg);
+        } else {
+            let msg = `⚠️ Status Upload Berkas Penjual Perorangan (${results.seller}):\n\n`;
+            msg += kkOk ? `✔ Kartu Keluarga: ${kkFilename} (BERHASIL)\n` : `❌ Kartu Keluarga: GAGAL (${(results.kk && results.kk.error) || "Gagal"})\n`;
+            msg += ktpOk ? `✔ KTP Penjual: ${ktpFilename} (BERHASIL)\n` : `❌ KTP Penjual: GAGAL (${(results.ktp && results.ktp.error) || "Gagal"})\n`;
+            if (results.persetujuan) {
+                msg += results.persetujuan.success
+                    ? `✔ KTP Persetujuan (${results.persetujuan.person}): ${results.persetujuan.filename || "KTP PERSETUJUAN.pdf"} (BERHASIL)\n`
+                    : `❌ KTP Persetujuan (${results.persetujuan.person}): GAGAL (${results.persetujuan.error || "Gagal"})\n`;
+            }
+            alert(msg);
+            console.warn(msg);
+        }
+    }
+
+    /**
+     * Memantau aksi pengguna saat menekan tombol Tambah Penjual Perorangan (#btn-tambahtipepihak1NIK)
+     * untuk otomatis memicu alur upload KK & KTP saat baris masuk di daftar pihak 1.
+     */
+    function initPenjualWatcher() {
+        if (watcherInitialized) return;
+        watcherInitialized = true;
+        console.log("[AutoUploadPenjual] Watcher submit form penjual perorangan diaktifkan.");
+
+        document.addEventListener("click", async (e) => {
+            const target = e.target;
+            const btnTambah = target.closest(SELECTORS.penjualPerorangan.btnTambah) ||
+                              (target.id === "btn-tambahtipepihak1NIK" ? target : null);
+            if (!btnTambah) return;
+
+            // Beri jeda 800ms agar jika dipicu oleh fillPerorangan, alur fillPerorangan yang mengeksekusi
+            await dom.delay(800);
+            if (isUploadingPerorangan) return;
+
+            const nameInput = document.querySelector("#frmtipepihak1Dukcapil #tNAMA_LENGKAP");
+            const submittedName = (
+                (nameInput ? nameInput.value : "") ||
+                (PPAT.activePenjualPerorangan && PPAT.activePenjualPerorangan.nama) ||
+                ""
+            ).trim();
+
+            console.log(`[AutoUploadPenjual] Tombol 'Tambah' penjual perorangan diklik. Nama target: '${submittedName}'. Menunggu baris masuk di daftar...`);
+
+            const rowBtn = await waitForPenjualRow(submittedName, 15000);
+            if (rowBtn) {
+                if (isUploadingPerorangan) return;
+                console.log(`[AutoUploadPenjual] Baris penjual '${submittedName}' terkonfirmasi di daftar! Memulai upload otomatis KK & KTP...`);
+                await dom.delay(300);
+                await runAutoUploadPerorangan(submittedName);
+            } else {
+                console.warn(`[AutoUploadPenjual] Baris penjual '${submittedName}' tidak muncul dalam batas waktu.`);
+            }
+        }, true);
+    }
+
     return {
         runAutoUpload,
+        runAutoUploadPerorangan,
+        uploadPersetujuanPerorangan,
+        initPenjualWatcher,
         getActivePtNameFromPage,
+        getActiveSellerNameFromPage,
+        resolveBuyerName,
         fetchPtInfo,
+        fetchBuyerInfo,
         downloadDocument,
+        downloadBuyerDocument,
         waitForGlobalModal,
         dismissModalAndEnsureClosed,
         forceCleanupModalDom,
         waitForSidebarReady,
+        waitForPenjualRow,
+        waitForPersetujuanRow,
     };
 })();

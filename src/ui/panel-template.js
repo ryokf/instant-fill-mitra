@@ -16,6 +16,7 @@ PPAT.panelTemplate = (() => {
         penjualPeroranganNama: "ppat-penjual-perorangan-nama",
         penjualPeroranganNik: "ppat-penjual-perorangan-nik",
         persetujuanPeroranganNama: "ppat-persetujuan-perorangan-nama",
+        btnUploadPenjualPerorangan: "ppat-btn-upload-penjual-perorangan",
         cardPembeli: "ppat-card-pembeli",
         pembeliNama: "ppat-pembeli-nama",
         pembeliNik: "ppat-pembeli-nik",
@@ -90,6 +91,11 @@ PPAT.panelTemplate = (() => {
                             </div>
                             <div class="ppat-person-meta">NIK: <b id="${IDS.penjualPeroranganNik}">-</b></div>
                             <div class="ppat-person-meta">Persetujuan: <b id="${IDS.persetujuanPeroranganNama}">-</b></div>
+                            <div style="margin-top:8px;">
+                                <button type="button" id="${IDS.btnUploadPenjualPerorangan}" class="ppat-btn-fill" style="background:#0284c7; width:100%;" title="Upload otomatis berkas KK & KTP Penjual serta KTP Persetujuan dari folder Pihak Kedua">
+                                    📤 Upload Berkas Penjual & Persetujuan (KK & KTP)
+                                </button>
+                            </div>
                         </div>
                         <div id="${IDS.cardPembeli}" class="ppat-person-card hidden">
                             <div class="ppat-person-card-header">

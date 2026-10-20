@@ -270,6 +270,12 @@ PPAT.persetujuanFiller = (() => {
 
             // Klik submitBtn langsung di content script
             submitBtn.click();
+
+            const autoUploadDocs = options.autoUploadDocs ?? false;
+            if (autoUploadDocs && PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.uploadPersetujuanPerorangan === "function") {
+                await dom.delay(600);
+                await PPAT.penjualUploadFiller.uploadPersetujuanPerorangan(data.nama, options.buyerName);
+            }
             return true;
         } else {
             alert(MESSAGES.persetujuanFilled || "Data Pihak Persetujuan telah diisi.");

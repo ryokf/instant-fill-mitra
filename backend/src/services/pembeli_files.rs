@@ -21,6 +21,8 @@ pub struct PembeliFolderMatch {
     pub pbb: PembeliDocInfo,
     pub bphtb: PembeliDocInfo,
     pub pph: PembeliDocInfo,
+    #[serde(default)]
+    pub ktp_persetujuan: Option<PembeliDocInfo>,
 }
 
 /// Membersihkan nama untuk pencocokan toleran (hanya huruf dan angka, UPPERCASE).
@@ -164,8 +166,13 @@ pub fn find_pembeli_document(folder_path: &Path, doc_type: &str) -> Option<(Stri
     };
 
     let doc_type_lower = doc_type.to_lowercase();
-    let is_kk = doc_type_lower == "kk" || doc_type_lower.contains("keluarga");
-    let is_ktp = doc_type_lower == "ktp";
+    let is_ktp_persetujuan = doc_type_lower == "ktp_persetujuan"
+        || doc_type_lower == "persetujuan"
+        || doc_type_lower.contains("persetujuan");
+    let is_kk_penjual = doc_type_lower == "kk_penjual";
+    let is_ktp_penjual = doc_type_lower == "ktp_penjual";
+    let is_kk = !is_kk_penjual && (doc_type_lower == "kk" || doc_type_lower.contains("keluarga"));
+    let is_ktp = !is_ktp_penjual && !is_ktp_persetujuan && doc_type_lower == "ktp";
     let is_pbb = doc_type_lower == "pbb" || doc_type_lower.contains("sppt");
     let is_bphtb = doc_type_lower == "bphtb" || doc_type_lower.contains("sspd");
     let is_pph = doc_type_lower == "pph" || doc_type_lower.contains("suket") || doc_type_lower.contains("ssb");
@@ -202,7 +209,45 @@ pub fn find_pembeli_document(folder_path: &Path, doc_type: &str) -> Option<(Stri
 
         let mut score: u32 = 0;
 
-        if is_kk {
+        if is_ktp_persetujuan {
+            if stem_upper == "KTP PERSETUJUAN" {
+                score += 100;
+            } else if file_name_upper.starts_with("KTP PERSETUJUAN") {
+                score += 90;
+            } else if file_name_upper.contains("KTP") && file_name_upper.contains("PERSETUJUAN") {
+                score += 80;
+            } else if file_name_upper.contains("PERSETUJUAN") {
+                score += 60;
+            }
+        } else if is_kk_penjual {
+            if stem_upper == "KK PENJUAL" {
+                score += 100;
+            } else if file_name_upper.starts_with("KK PENJUAL") {
+                score += 90;
+            } else if file_name_upper.contains("KK") && file_name_upper.contains("PENJUAL") {
+                score += 80;
+            } else if stem_upper == "KK" {
+                score += 70;
+            } else if file_name_upper.starts_with("KK") && !file_name_upper.contains("PEMBELI") {
+                score += 50;
+            } else if file_name_upper.contains("KK") && !file_name_upper.contains("PEMBELI") {
+                score += 30;
+            }
+        } else if is_ktp_penjual {
+            if stem_upper == "KTP PENJUAL" {
+                score += 100;
+            } else if file_name_upper.starts_with("KTP PENJUAL") {
+                score += 90;
+            } else if file_name_upper.contains("KTP") && file_name_upper.contains("PENJUAL") {
+                score += 80;
+            } else if stem_upper == "KTP" {
+                score += 70;
+            } else if file_name_upper.starts_with("KTP") && !file_name_upper.contains("PEMBELI") && !file_name_upper.contains("PERSETUJUAN") {
+                score += 50;
+            } else if file_name_upper.contains("KTP") && !file_name_upper.contains("PEMBELI") && !file_name_upper.contains("PERSETUJUAN") {
+                score += 30;
+            }
+        } else if is_kk {
             if file_name_upper.contains("PENJUAL") {
                 continue;
             }
@@ -277,7 +322,7 @@ fn to_doc_info(opt: Option<(String, PathBuf, u64)>) -> PembeliDocInfo {
     }
 }
 
-/// Mengambil informasi folder dan berkas dokumen pembeli (KK, KTP, PBB, BPHTB, PPh).
+/// Mengambil informasi folder dan berkas dokumen pembeli (KK, KTP, PBB, BPHTB, PPh, KTP Persetujuan).
 pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolderMatch, String> {
     let (folder_name, folder_path) = find_pembeli_folder(base_dir, buyer_name)
         .ok_or_else(|| format!("Folder pihak kedua untuk '{}' tidak ditemukan di '{}'", buyer_name, base_dir))?;
@@ -287,6 +332,7 @@ pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolde
     let pbb_info = to_doc_info(find_pembeli_document(&folder_path, "pbb"));
     let bphtb_info = to_doc_info(find_pembeli_document(&folder_path, "bphtb"));
     let pph_info = to_doc_info(find_pembeli_document(&folder_path, "pph"));
+    let ktp_persetujuan_info = to_doc_info(find_pembeli_document(&folder_path, "ktp_persetujuan"));
 
     Ok(PembeliFolderMatch {
         buyer_query: buyer_name.to_string(),
@@ -297,5 +343,6 @@ pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolde
         pbb: pbb_info,
         bphtb: bphtb_info,
         pph: pph_info,
+        ktp_persetujuan: Some(ktp_persetujuan_info),
     })
 }

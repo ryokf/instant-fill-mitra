@@ -28,6 +28,11 @@ PPAT.panel = (() => {
         if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.initPembeliWatcher === "function") {
             PPAT.pembeliUploadFiller.initPembeliWatcher();
         }
+
+        // Inisialisasi pemantau otomatis submit penjual perorangan untuk upload KK & KTP
+        if (PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.initPenjualWatcher === "function") {
+            PPAT.penjualUploadFiller.initPenjualWatcher();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -203,9 +208,16 @@ PPAT.panel = (() => {
                 renderPenjualPeroranganCard(els, pPerorangan, pPersetujuan);
             }
 
-            updateStatus(`⏳ ${prefix}Penjual perorangan (${pPerorangan.nama}). Mengisi form penjual...`, "info");
+            const buyerName =
+                (PPAT.activePembeliData && PPAT.activePembeliData.nama) ||
+                (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.getActiveBuyerName === "function" && PPAT.pembeliUploadFiller.getActiveBuyerName()) ||
+                "";
+
+            updateStatus(`⏳ ${prefix}Penjual perorangan (${pPerorangan.nama}). Mengisi form penjual & upload KK/KTP...`, "info");
             await PPAT.penjualFiller.fillPerorangan(pPerorangan, {
                 autoSubmit: true,
+                autoUploadDocs: true,
+                buyerName: buyerName,
             });
 
             let persetujuanInfoText = "";
@@ -214,18 +226,29 @@ PPAT.panel = (() => {
                     PPAT.persetujuanFiller &&
                     PPAT.persetujuanFiller.isPersonAlreadyInDaftar(pPersetujuan.nama, pPersetujuan.nik);
 
+                let setujuOk = alreadyInWeb;
                 if (alreadyInWeb) {
                     console.log(`[Panel] Pihak Persetujuan perorangan (${pPersetujuan.nama}) sudah tercatat di daftar ATR/BPN. Melewati penambahan.`);
                     persetujuanInfoText = ` & Persetujuan (${pPersetujuan.nama}) [Sudah Ada]`;
                 } else {
                     await PPAT.dom.delay(800);
                     updateStatus(`⏳ ${prefix}Mengisi data Pihak Persetujuan (${pPersetujuan.nama})...`, "info");
-                    const setujuOk = await PPAT.persetujuanFiller.fill(pPersetujuan, {
+                    setujuOk = await PPAT.persetujuanFiller.fill(pPersetujuan, {
                         autoSubmit: true,
                         autoUploadDocs: false,
                     });
                     if (setujuOk) {
                         persetujuanInfoText = ` & Persetujuan (${pPersetujuan.nama})`;
+                    }
+                }
+
+                // Otomatis unggah KTP Pihak Persetujuan (KTP PERSETUJUAN.pdf) dari folder Pihak Kedua\[nama pembeli]
+                if (setujuOk && PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.uploadPersetujuanPerorangan === "function") {
+                    await PPAT.dom.delay(600);
+                    updateStatus(`⏳ ${prefix}Mengunggah KTP Pihak Persetujuan (${pPersetujuan.nama})...`, "info");
+                    const resKtpSetuju = await PPAT.penjualUploadFiller.uploadPersetujuanPerorangan(pPersetujuan.nama, buyerName);
+                    if (resKtpSetuju && resKtpSetuju.success) {
+                        persetujuanInfoText += " + KTP Terunggah";
                     }
                 }
             }
@@ -392,6 +415,20 @@ PPAT.panel = (() => {
             const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
             if (file) handlePdfFile(file);
         });
+
+        // Tombol manual upload berkas KK & KTP Penjual Perorangan
+        if (els.btnUploadPenjualPerorangan) {
+            els.btnUploadPenjualPerorangan.addEventListener("click", async () => {
+                const sellerName = (PPAT.activePenjualPerorangan && PPAT.activePenjualPerorangan.nama) || null;
+                const buyerName =
+                    (PPAT.activePembeliData && PPAT.activePembeliData.nama) ||
+                    (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.getActiveBuyerName === "function" && PPAT.pembeliUploadFiller.getActiveBuyerName()) ||
+                    null;
+                if (PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.runAutoUploadPerorangan === "function") {
+                    await PPAT.penjualUploadFiller.runAutoUploadPerorangan(sellerName, buyerName);
+                }
+            });
+        }
     }
 
     // -------------------------------------------------------------------------
