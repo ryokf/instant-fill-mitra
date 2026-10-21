@@ -23,6 +23,10 @@ pub struct PembeliFolderMatch {
     pub pph: PembeliDocInfo,
     #[serde(default)]
     pub ktp_persetujuan: Option<PembeliDocInfo>,
+    #[serde(default)]
+    pub ktp_penjual: Option<PembeliDocInfo>,
+    #[serde(default)]
+    pub kk_penjual: Option<PembeliDocInfo>,
 }
 
 /// Membersihkan nama untuk pencocokan toleran (hanya huruf dan angka, UPPERCASE).
@@ -333,6 +337,8 @@ pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolde
     let bphtb_info = to_doc_info(find_pembeli_document(&folder_path, "bphtb"));
     let pph_info = to_doc_info(find_pembeli_document(&folder_path, "pph"));
     let ktp_persetujuan_info = to_doc_info(find_pembeli_document(&folder_path, "ktp_persetujuan"));
+    let ktp_penjual_info = to_doc_info(find_pembeli_document(&folder_path, "ktp_penjual"));
+    let kk_penjual_info = to_doc_info(find_pembeli_document(&folder_path, "kk_penjual"));
 
     Ok(PembeliFolderMatch {
         buyer_query: buyer_name.to_string(),
@@ -344,5 +350,7 @@ pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolde
         bphtb: bphtb_info,
         pph: pph_info,
         ktp_persetujuan: Some(ktp_persetujuan_info),
+        ktp_penjual: Some(ktp_penjual_info),
+        kk_penjual: Some(kk_penjual_info),
     })
 }

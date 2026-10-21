@@ -45,6 +45,30 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
         }
     }
 
+    // Cek kombinasi baris berdekatan (jika terpisah baris saat OCR)
+    if nomor_berkas.is_empty() {
+        for idx in 0..ocr_lines.len().saturating_sub(1) {
+            let combined = format!("{} {}", ocr_lines[idx], ocr_lines[idx + 1]);
+            let low = combined.to_lowercase();
+            if low.contains("tanggungan") || low.contains("roya") || low.contains("peringkat") || low.contains("pemberian") {
+                continue;
+            }
+            if let Some(caps) = re_berkas_full.captures(&combined) {
+                nomor_berkas = caps[1].to_string();
+                tahun_berkas = caps[2].to_string();
+                break;
+            }
+        }
+    }
+
+    if nomor_berkas.is_empty() {
+        let re_berkas_multiline = Regex::new(r"(?i)\b(?:no\.?|nomor)?\s*berkas\s*[:\s]*([0-9]{3,8})\s*/\s*(20\d{2}|19\d{2})\b").unwrap();
+        if let Some(caps) = re_berkas_multiline.captures(&raw_text) {
+            nomor_berkas = caps[1].to_string();
+            tahun_berkas = caps[2].to_string();
+        }
+    }
+
     if nomor_berkas.is_empty() {
         for line in ocr_lines {
             let low = line.to_lowercase();
@@ -147,7 +171,7 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     let mut kabupaten = String::new();
     let mut provinsi = String::new();
 
-    let re_desa = Regex::new(r"(?i)desa\s+([A-Za-z\s]+?)(?:\s+kecamatan|\s+kabupaten|$)").unwrap();
+    let re_desa = Regex::new(r"(?i)(?:desa|kelurahan)\s+([A-Za-z\s]+?)(?:\s+kecamatan|\s+kabupaten|$)").unwrap();
     if let Some(caps) = re_desa.captures(&raw_text) {
         desa = clean_text(&caps[1]);
     }

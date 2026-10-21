@@ -148,8 +148,9 @@ PPAT.pembeliUploadFiller = (() => {
         const fileNameHeader = resp.headers.get("x-file-name");
         const docLower = (docType || "").toLowerCase();
         let defaultFilename = "DOKUMEN.pdf";
-        if (docLower === "kk") defaultFilename = "KK.pdf";
-        else if (docLower === "ktp") defaultFilename = "KTP.pdf";
+        if (docLower === "kk" || docLower === "kk_penjual") defaultFilename = "KK.pdf";
+        else if (docLower === "ktp" || docLower === "ktp_penjual") defaultFilename = "KTP.pdf";
+        else if (docLower === "ktp_persetujuan" || docLower.includes("persetujuan")) defaultFilename = "KTP PERSETUJUAN.pdf";
         else if (docLower === "pbb") defaultFilename = "PBB.pdf";
         else if (docLower === "bphtb") defaultFilename = "BPHTB.pdf";
         else if (docLower === "pph") defaultFilename = "PPH.pdf";

@@ -51,6 +51,25 @@ PPAT.penjualUploadFiller = (() => {
     }
 
     /**
+     * Memeriksa apakah tipe penjual saat ini adalah Perorangan.
+     * @returns {boolean}
+     */
+    function isTipePenjualPerorangan() {
+        if (PPAT.activePenjualPerorangan) return true;
+        const select = document.querySelector((SELECTORS.penjualPerorangan && SELECTORS.penjualPerorangan.tipePihak) || "select#tipepihak1");
+        if (select && select.value) {
+            const val = select.value.toLowerCase();
+            if (val === "perorangan" || val.includes("perorangan")) return true;
+            if (val === "non perorangan" || val.includes("badan") || val.includes("hukum")) return false;
+        }
+        const formPerorangan = document.querySelector((SELECTORS.penjualPerorangan && SELECTORS.penjualPerorangan.form) || "#frmtipepihak1Dukcapil");
+        if (formPerorangan && (formPerorangan.offsetWidth > 0 || formPerorangan.offsetHeight > 0 || formPerorangan.style.display !== "none")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Mendapatkan nama pembeli aktif untuk mencari folder G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli].
      * @param {string} [explicitBuyerName] Nama pembeli jika sudah diketahui secara eksplisit
      * @returns {string} Nama pembeli atau string kosong jika belum ditemukan
@@ -1028,14 +1047,14 @@ PPAT.penjualUploadFiller = (() => {
             const pembeliData = info.data || info;
             const folderName = pembeliData.folder_name || pembeliData.folder || info.folder || buyerName;
 
-            const kkObj = pembeliData.kk || (info.files && info.files.kk) || {};
-            const ktpObj = pembeliData.ktp || (info.files && info.files.ktp) || {};
+            const kkObj = pembeliData.kk_penjual || (info.files && info.files.kk_penjual) || pembeliData.kk || (info.files && info.files.kk) || {};
+            const ktpObj = pembeliData.ktp_penjual || (info.files && info.files.ktp_penjual) || pembeliData.ktp || (info.files && info.files.ktp) || {};
 
             const kkFound = typeof kkObj === "object" ? Boolean(kkObj.found) : Boolean(kkObj);
             const ktpFound = typeof ktpObj === "object" ? Boolean(ktpObj.found) : Boolean(ktpObj);
 
-            const kkFilename = (typeof kkObj === "object" ? kkObj.filename : kkObj) || "KK.pdf";
-            const ktpFilename = (typeof ktpObj === "object" ? ktpObj.filename : ktpObj) || "KTP.pdf";
+            const kkFilename = (typeof kkObj === "object" ? kkObj.filename : kkObj) || "KK PENJUAL.pdf";
+            const ktpFilename = (typeof ktpObj === "object" ? ktpObj.filename : ktpObj) || "KTP PENJUAL.pdf";
 
             console.log(`[AutoUploadPenjualPerorangan] Folder Pihak Kedua terkonfirmasi: '${folderName}'. KK: ${kkFilename} (found: ${kkFound}), KTP: ${ktpFilename} (found: ${ktpFound})`);
 
@@ -1127,12 +1146,13 @@ PPAT.penjualUploadFiller = (() => {
                 results.ktp.error = `Berkas KTP tidak ditemukan di dalam folder '${folderName}'.`;
             }
 
-            // 7. Langkah 3: Upload KTP Pihak Persetujuan (jika ada persetujuan atau berkas KTP PERSETUJUAN.pdf)
+            // 7. Langkah 3: Upload KTP Pihak Persetujuan (jika ada persetujuan atau berkas KTP PERSETUJUAN / KTP PENJUAL)
             const personName = (PPAT.activePersetujuanPerorangan && PPAT.activePersetujuanPerorangan.nama) || "";
             const hasPersetujuanInWeb = Boolean(document.querySelector(config.SELECTORS.persetujuan.btnUnggah));
-            const ktpPersetujuanFound = pembeliData.ktp_persetujuan && pembeliData.ktp_persetujuan.found;
+            const ktpPersetujuanFound = pembeliData.ktp_persetujuan && (typeof pembeliData.ktp_persetujuan === "object" ? pembeliData.ktp_persetujuan.found : Boolean(pembeliData.ktp_persetujuan));
+            const hasPersetujuanTarget = Boolean(personName || hasPersetujuanInWeb || ktpPersetujuanFound);
 
-            if (personName || hasPersetujuanInWeb || ktpPersetujuanFound) {
+            if (hasPersetujuanTarget) {
                 console.log(`[AutoUploadPenjualPerorangan] [3/3] Memeriksa dan mengunggah KTP Pihak Persetujuan (${personName || "Persetujuan"})...`);
 
                 // Pastikan pihak persetujuan sudah masuk di daftar web jika ada data personilnya
@@ -1143,13 +1163,14 @@ PPAT.penjualUploadFiller = (() => {
                     await dom.delay(600);
                 }
 
-                const resPersetujuan = await uploadPersetujuanPerorangan(personName, buyerName);
+                const resPersetujuan = await uploadPersetujuanPerorangan(personName, buyerName, { isPerorangan: true });
                 if (resPersetujuan) {
                     results.persetujuan = {
                         person: personName || "Pihak Persetujuan",
-                        filename: resPersetujuan.filename || "KTP PERSETUJUAN.pdf",
+                        filename: resPersetujuan.filename || (resPersetujuan.isFallback ? ktpFilename : "KTP PERSETUJUAN.pdf"),
                         success: resPersetujuan.success,
                         error: resPersetujuan.error,
+                        isFallback: resPersetujuan.isFallback || false,
                     };
                 }
             }
@@ -1168,9 +1189,18 @@ PPAT.penjualUploadFiller = (() => {
 
     /**
      * Mengunggah berkas KTP Pihak Persetujuan untuk Penjual Perorangan.
-     * Lokasi file: G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli]\KTP PERSETUJUAN.pdf
+     * Lokasi default: G:\My Drive\notaris bu sri\Pihak Kedua\[nama pembeli]\KTP PERSETUJUAN.pdf
+     *
+     * Pengkondisian:
+     * Ketika tipe penjual adalah perorangan, jika di dalam folder yang dituju
+     * tidak terdapat KTP PERSETUJUAN padahal penjual adalah perorangan,
+     * maka file yang diupload untuk pihak persetujuan adalah file yang memiliki nama KTP PENJUAL.
+     *
+     * @param {string} [personNameInput] Nama pihak persetujuan
+     * @param {string} [buyerNameInput] Nama pembeli (folder tujuan di Pihak Kedua)
+     * @param {object} [options] Opsi tambahan
      */
-    async function uploadPersetujuanPerorangan(personNameInput, buyerNameInput) {
+    async function uploadPersetujuanPerorangan(personNameInput, buyerNameInput, options = {}) {
         const personName = (
             personNameInput ||
             (PPAT.activePersetujuanPerorangan && PPAT.activePersetujuanPerorangan.nama) ||
@@ -1183,7 +1213,11 @@ PPAT.penjualUploadFiller = (() => {
             return { success: false, error: "Nama pembeli tidak ditemukan" };
         }
 
-        console.log(`[UploadPersetujuan] Memulai upload KTP Persetujuan '${personName || "-"}' dari folder Pihak Kedua '${buyerName}'...`);
+        const isPerorangan = options.isPerorangan !== undefined
+            ? options.isPerorangan
+            : isTipePenjualPerorangan();
+
+        console.log(`[UploadPersetujuan] Memulai upload KTP Persetujuan '${personName || "-"}' dari folder Pihak Kedua '${buyerName}' (tipe penjual: ${isPerorangan ? "Perorangan" : "Non-Perorangan"})...`);
 
         // 1. Cek info file di backend
         let info;
@@ -1198,21 +1232,54 @@ PPAT.penjualUploadFiller = (() => {
         const folderName = pembeliData.folder_name || pembeliData.folder || info.folder || buyerName;
         const ktpPersetujuanObj = pembeliData.ktp_persetujuan || (info.files && info.files.ktp_persetujuan);
 
+        const ktpPersetujuanFound = typeof ktpPersetujuanObj === "object" && ktpPersetujuanObj !== null
+            ? Boolean(ktpPersetujuanObj.found && ktpPersetujuanObj.filename)
+            : Boolean(ktpPersetujuanObj);
+
+        let docTypeToDownload = "ktp_persetujuan";
         let filename = "KTP PERSETUJUAN.pdf";
-        if (typeof ktpPersetujuanObj === "object" && ktpPersetujuanObj !== null) {
-            if (ktpPersetujuanObj.filename) filename = ktpPersetujuanObj.filename;
-        } else if (typeof ktpPersetujuanObj === "string" && ktpPersetujuanObj) {
-            filename = ktpPersetujuanObj;
+        let isFallback = false;
+
+        if (ktpPersetujuanFound) {
+            if (typeof ktpPersetujuanObj === "object" && ktpPersetujuanObj !== null && ktpPersetujuanObj.filename) {
+                filename = ktpPersetujuanObj.filename;
+            } else if (typeof ktpPersetujuanObj === "string" && ktpPersetujuanObj) {
+                filename = ktpPersetujuanObj;
+            }
+            docTypeToDownload = "ktp_persetujuan";
+            console.log(`[UploadPersetujuan] Berkas 'KTP PERSETUJUAN' ditemukan di folder '${folderName}': '${filename}'`);
+        } else if (isPerorangan) {
+            // PENGKONDISIAN UTAMA:
+            // Ketika tipe penjual adalah perorangan, jika di dalam folder yang dituju tidak terdapat KTP PERSETUJUAN
+            // padahal penjual adalah perorangan, maka file yang diupload untuk pihak persetujuan adalah file yang memiliki nama KTP PENJUAL.
+            isFallback = true;
+            docTypeToDownload = "ktp_penjual";
+
+            const ktpPenjualObj = pembeliData.ktp_penjual || (info.files && info.files.ktp_penjual);
+            let penjualFilename = null;
+            if (typeof ktpPenjualObj === "object" && ktpPenjualObj !== null && ktpPenjualObj.filename) {
+                penjualFilename = ktpPenjualObj.filename;
+            } else if (typeof ktpPenjualObj === "string" && ktpPenjualObj) {
+                penjualFilename = ktpPenjualObj;
+            }
+
+            filename = penjualFilename || "KTP PENJUAL.pdf";
+            console.log(
+                `[UploadPersetujuan] ℹ Pengkondisian aktif: Berkas 'KTP PERSETUJUAN' tidak ada di folder '${folderName}', penjual bertipe perorangan.\n` +
+                `[UploadPersetujuan] ➔ Berkas yang diunggah untuk Pihak Persetujuan dialihkan ke: '${filename}' (KTP PENJUAL).`
+            );
+        } else {
+            console.warn(`[UploadPersetujuan] Berkas 'KTP PERSETUJUAN' tidak ditemukan di folder '${folderName}'.`);
         }
 
-        // 2. Download berkas KTP Persetujuan
-        console.log(`[UploadPersetujuan] Mengunduh '${filename}' dari folder '${folderName}'...`);
+        // 2. Download berkas dokumen target (KTP Persetujuan atau fallback ke KTP Penjual)
+        console.log(`[UploadPersetujuan] Mengunduh berkas '${filename}' (${docTypeToDownload}) dari folder '${folderName}'...`);
         let docPromise;
         try {
-            docPromise = downloadBuyerDocument(buyerName, "ktp_persetujuan");
+            docPromise = downloadBuyerDocument(buyerName, docTypeToDownload);
         } catch (err) {
-            console.warn("[UploadPersetujuan] Gagal download berkas KTP Persetujuan:", err);
-            return { success: false, error: err.message };
+            console.warn(`[UploadPersetujuan] Gagal download berkas ${docTypeToDownload}:`, err);
+            return { success: false, error: err.message, isFallback };
         }
 
         // 3. Cari tombol Unggah untuk baris Pihak Persetujuan di #daftarpemohonpihaksetujuplaceholder
@@ -1220,7 +1287,7 @@ PPAT.penjualUploadFiller = (() => {
         if (!btnUnggah) {
             const errMsg = `Tombol Unggah untuk Pihak Persetujuan '${personName || "-"}' tidak ditemukan di daftar pihak persetujuan.`;
             console.warn(`[UploadPersetujuan] ${errMsg}`);
-            return { success: false, error: errMsg };
+            return { success: false, error: errMsg, isFallback };
         }
 
         // 4. Eksekusi upload step
@@ -1234,11 +1301,14 @@ PPAT.penjualUploadFiller = (() => {
         );
 
         if (res.success) {
-            console.log(`[UploadPersetujuan] ✔ KTP Persetujuan '${personName || "-"}' berhasil diunggah: ${res.filename}`);
+            res.isFallback = isFallback;
+            const note = isFallback ? " (menggunakan file KTP PENJUAL)" : "";
+            console.log(`[UploadPersetujuan] ✔ Berkas untuk Pihak Persetujuan '${personName || "-"}' berhasil diunggah: ${res.filename}${note}`);
             await dismissModalAndEnsureClosed();
             forceCleanupModalDom();
         } else {
-            console.warn(`[UploadPersetujuan] Gagal upload KTP Persetujuan '${personName || "-"}':`, res.error);
+            res.isFallback = isFallback;
+            console.warn(`[UploadPersetujuan] Gagal upload berkas untuk Pihak Persetujuan '${personName || "-"}':`, res.error);
         }
 
         return res;
@@ -1259,7 +1329,8 @@ PPAT.penjualUploadFiller = (() => {
                       `1. Kartu Keluarga (KK): ${kkFilename} (Berhasil)\n` +
                       `2. KTP Penjual: ${ktpFilename} (Berhasil)\n`;
             if (results.persetujuan) {
-                msg += `3. KTP Persetujuan (${results.persetujuan.person}): ${results.persetujuan.filename || "KTP PERSETUJUAN.pdf"} (Berhasil)\n`;
+                const note = results.persetujuan.isFallback ? " [menggunakan KTP Penjual]" : "";
+                msg += `3. KTP Persetujuan (${results.persetujuan.person}): ${results.persetujuan.filename || "KTP PERSETUJUAN.pdf"}${note} (Berhasil)\n`;
             }
             alert(msg);
             console.log(msg);
@@ -1268,8 +1339,9 @@ PPAT.penjualUploadFiller = (() => {
             msg += kkOk ? `✔ Kartu Keluarga: ${kkFilename} (BERHASIL)\n` : `❌ Kartu Keluarga: GAGAL (${(results.kk && results.kk.error) || "Gagal"})\n`;
             msg += ktpOk ? `✔ KTP Penjual: ${ktpFilename} (BERHASIL)\n` : `❌ KTP Penjual: GAGAL (${(results.ktp && results.ktp.error) || "Gagal"})\n`;
             if (results.persetujuan) {
+                const note = results.persetujuan.isFallback ? " [KTP Penjual]" : "";
                 msg += results.persetujuan.success
-                    ? `✔ KTP Persetujuan (${results.persetujuan.person}): ${results.persetujuan.filename || "KTP PERSETUJUAN.pdf"} (BERHASIL)\n`
+                    ? `✔ KTP Persetujuan (${results.persetujuan.person}): ${results.persetujuan.filename || "KTP PERSETUJUAN.pdf"}${note} (BERHASIL)\n`
                     : `❌ KTP Persetujuan (${results.persetujuan.person}): GAGAL (${results.persetujuan.error || "Gagal"})\n`;
             }
             alert(msg);
@@ -1321,6 +1393,7 @@ PPAT.penjualUploadFiller = (() => {
         runAutoUpload,
         runAutoUploadPerorangan,
         uploadPersetujuanPerorangan,
+        isTipePenjualPerorangan,
         initPenjualWatcher,
         getActivePtNameFromPage,
         getActiveSellerNameFromPage,

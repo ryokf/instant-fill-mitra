@@ -18,8 +18,8 @@ pub async fn render_pdf_page(
         let factor = 3800.0 / max_dim;
         target_w *= factor;
         target_h *= factor;
-    } else if max_dim > 0.0 && max_dim < 2200.0 {
-        let factor = 2200.0 / max_dim;
+    } else if max_dim > 0.0 && max_dim < 2800.0 {
+        let factor = 2800.0 / max_dim;
         target_w *= factor;
         target_h *= factor;
     }

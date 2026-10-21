@@ -247,13 +247,13 @@ PPAT.panel = (() => {
                     }
                 }
 
-                // Otomatis unggah KTP Pihak Persetujuan (KTP PERSETUJUAN.pdf) dari folder Pihak Kedua\[nama pembeli]
+                // Otomatis unggah KTP Pihak Persetujuan (KTP PERSETUJUAN / fallback KTP PENJUAL) dari folder Pihak Kedua\[nama pembeli]
                 if (setujuOk && PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.uploadPersetujuanPerorangan === "function") {
                     await PPAT.dom.delay(600);
                     updateStatus(`⏳ ${prefix}Mengunggah KTP Pihak Persetujuan (${pPersetujuan.nama})...`, "info");
-                    const resKtpSetuju = await PPAT.penjualUploadFiller.uploadPersetujuanPerorangan(pPersetujuan.nama, buyerName);
+                    const resKtpSetuju = await PPAT.penjualUploadFiller.uploadPersetujuanPerorangan(pPersetujuan.nama, buyerName, { isPerorangan: true });
                     if (resKtpSetuju && resKtpSetuju.success) {
-                        persetujuanInfoText += " + KTP Terunggah";
+                        persetujuanInfoText += resKtpSetuju.isFallback ? " + KTP Terunggah (KTP Penjual)" : " + KTP Terunggah";
                     }
                 }
             }
@@ -543,6 +543,10 @@ PPAT.panel = (() => {
 
                     // Cek halaman saat ini:
                     if (sertipikatFiller.isBerkasPage()) {
+                        if (!lastSertipikatData.nomor_berkas) {
+                            setUploadStatus("⚠ Nomor berkas tidak terdeteksi dari PDF. Silakan periksa dokumen atau isi manual.", "warn");
+                            return;
+                        }
                         if (sertipikatFiller.isOpenedBerkasMatching(lastSertipikatData.nomor_berkas)) {
                             setUploadStatus("⏳ Berkas terbuka cocok! Mengunduh dokumen & mengambil Step 1...", "info");
                             const res = await sertipikatFiller.processOpenedBerkas(
@@ -644,6 +648,10 @@ PPAT.panel = (() => {
                 renderSertipikatCard(freshData);
 
                 if (sertipikatFiller.isBerkasPage()) {
+                    if (!freshData.nomor_berkas) {
+                        setUploadStatus("⚠ Nomor berkas tidak terdeteksi dari PDF. Silakan periksa dokumen atau isi manual.", "warn");
+                        return;
+                    }
                     if (sertipikatFiller.isOpenedBerkasMatching(freshData.nomor_berkas)) {
                         setUploadStatus("⏳ Memproses berkas yang terbuka (unduh dokumen & Step 1)...", "info");
                         const res = await sertipikatFiller.processOpenedBerkas(

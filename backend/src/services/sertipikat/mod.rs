@@ -94,7 +94,30 @@ pub async fn process_sertipikat_file(
             }
         }
 
-        let data = parser::parse_sertipikat_text(&best_lines);
+        let mut data = parser::parse_sertipikat_text(&best_lines);
+
+        // Fallback: Jika nomor berkas belum terdeteksi pada render pertama, render ulang pada resolusi lebih tinggi (3.5)
+        if data.nomor_berkas.is_empty() && scale < 3.5 {
+            if let Ok(hi_img) = render_pdf_page(&doc, 0, 3.5).await {
+                let rot_img = rotate_rgba(&hi_img.to_rgba8(), best_rot);
+                if let Ok(retry_lines) = run_ocr_on_image(&rot_img, &engine).await {
+                    let retry_data = parser::parse_sertipikat_text(&retry_lines);
+                    if !retry_data.nomor_berkas.is_empty() {
+                        data.nomor_berkas = retry_data.nomor_berkas;
+                        data.tahun_berkas = retry_data.tahun_berkas;
+                    }
+                    if data.nib_elektronik.is_empty() && !retry_data.nib_elektronik.is_empty() {
+                        data.nib_elektronik = retry_data.nib_elektronik;
+                    }
+                    if data.nomor_seri_blangko.is_empty() && !retry_data.nomor_seri_blangko.is_empty() {
+                        data.nomor_seri_blangko = retry_data.nomor_seri_blangko;
+                    }
+                    if data.desa.is_empty() && !retry_data.desa.is_empty() {
+                        data.desa = retry_data.desa;
+                    }
+                }
+            }
+        }
 
         Ok(SertipikatResult {
             success: true,

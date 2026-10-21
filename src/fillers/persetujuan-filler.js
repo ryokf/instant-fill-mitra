@@ -274,7 +274,7 @@ PPAT.persetujuanFiller = (() => {
             const autoUploadDocs = options.autoUploadDocs ?? false;
             if (autoUploadDocs && PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.uploadPersetujuanPerorangan === "function") {
                 await dom.delay(600);
-                await PPAT.penjualUploadFiller.uploadPersetujuanPerorangan(data.nama, options.buyerName);
+                await PPAT.penjualUploadFiller.uploadPersetujuanPerorangan(data.nama, options.buyerName, { isPerorangan: options.isPerorangan });
             }
             return true;
         } else {

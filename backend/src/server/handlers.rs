@@ -190,7 +190,7 @@ pub async fn extract_sertipikat_handler(multipart: Multipart) -> Response {
     println!("[API: Sertipikat] Memproses berkas Sertipikat: {} ({} bytes)...", filename, bytes.len());
 
     let result = execute_winrt_task("sertipikat_upload", &filename, &bytes, |path| async move {
-        process_sertipikat_file(&path, 2.0).await
+        process_sertipikat_file(&path, 3.0).await
     }).await;
 
     match result {
@@ -389,14 +389,16 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
     match pembeli_files::get_pembeli_info(base_dir, &query.buyer_name) {
         Ok(info) => {
             println!(
-                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}, PBB: {:?}, BPHTB: {:?}, PPh: {:?}, KTP Persetujuan: {:?}",
+                "[API: Pembeli Info] Berhasil - Folder: {}, KK: {:?}, KTP: {:?}, PBB: {:?}, BPHTB: {:?}, PPh: {:?}, KTP Persetujuan: {:?}, KTP Penjual: {:?}, KK Penjual: {:?}",
                 info.folder_name,
                 info.kk.filename,
                 info.ktp.filename,
                 info.pbb.filename,
                 info.bphtb.filename,
                 info.pph.filename,
-                info.ktp_persetujuan.as_ref().and_then(|k| k.filename.clone())
+                info.ktp_persetujuan.as_ref().and_then(|k| k.filename.clone()),
+                info.ktp_penjual.as_ref().and_then(|k| k.filename.clone()),
+                info.kk_penjual.as_ref().and_then(|k| k.filename.clone())
             );
             (
                 StatusCode::OK,
@@ -411,6 +413,8 @@ pub async fn get_pembeli_files_info_handler(Query(query): Query<PembeliInfoQuery
                         "bphtb": info.bphtb.filename,
                         "pph": info.pph.filename,
                         "ktp_persetujuan": info.ktp_persetujuan.as_ref().and_then(|k| k.filename.clone()),
+                        "ktp_penjual": info.ktp_penjual.as_ref().and_then(|k| k.filename.clone()),
+                        "kk_penjual": info.kk_penjual.as_ref().and_then(|k| k.filename.clone()),
                     }
                 })),
             ).into_response()
@@ -463,18 +467,48 @@ pub async fn get_pembeli_file_download_handler(Query(query): Query<PembeliDownlo
     let doc_match = match pembeli_files::find_pembeli_document(&folder_match.1, &query.doc_type) {
         Some(m) => m,
         None => {
-            let msg = format!(
-                "Berkas dokumen jenis '{}' tidak ditemukan di folder pembeli '{}'",
-                query.doc_type, folder_match.0
-            );
-            eprintln!("[API: Pembeli Download] Gagal: {}", msg);
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "success": false,
-                    "error": msg
-                })),
-            ).into_response();
+            let doc_type_lower = query.doc_type.to_lowercase();
+            let is_persetujuan = doc_type_lower == "ktp_persetujuan"
+                || doc_type_lower == "persetujuan"
+                || doc_type_lower.contains("persetujuan");
+
+            // Pengkondisian: jika berkas KTP PERSETUJUAN tidak ditemukan,
+            // fallback ke berkas KTP PENJUAL (karena pihak persetujuan pada penjual perorangan)
+            if is_persetujuan {
+                if let Some(fallback_penjual) = pembeli_files::find_pembeli_document(&folder_match.1, "ktp_penjual") {
+                    println!(
+                        "[API: Pembeli Download] Berkas KTP Persetujuan tidak ditemukan di folder '{}', dialihkan ke KTP Penjual: '{}'",
+                        folder_match.0, fallback_penjual.0
+                    );
+                    fallback_penjual
+                } else {
+                    let msg = format!(
+                        "Berkas dokumen jenis '{}' (maupun KTP Penjual) tidak ditemukan di folder pembeli '{}'",
+                        query.doc_type, folder_match.0
+                    );
+                    eprintln!("[API: Pembeli Download] Gagal: {}", msg);
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({
+                            "success": false,
+                            "error": msg
+                        })),
+                    ).into_response();
+                }
+            } else {
+                let msg = format!(
+                    "Berkas dokumen jenis '{}' tidak ditemukan di folder pembeli '{}'",
+                    query.doc_type, folder_match.0
+                );
+                eprintln!("[API: Pembeli Download] Gagal: {}", msg);
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({
+                        "success": false,
+                        "error": msg
+                    })),
+                ).into_response();
+            }
         }
     };
 
