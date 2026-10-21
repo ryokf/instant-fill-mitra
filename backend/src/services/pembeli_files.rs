@@ -27,6 +27,8 @@ pub struct PembeliFolderMatch {
     pub ktp_penjual: Option<PembeliDocInfo>,
     #[serde(default)]
     pub kk_penjual: Option<PembeliDocInfo>,
+    #[serde(default)]
+    pub sertipikat: Option<PembeliDocInfo>,
 }
 
 /// Membersihkan nama untuk pencocokan toleran (hanya huruf dan angka, UPPERCASE).
@@ -180,6 +182,10 @@ pub fn find_pembeli_document(folder_path: &Path, doc_type: &str) -> Option<(Stri
     let is_pbb = doc_type_lower == "pbb" || doc_type_lower.contains("sppt");
     let is_bphtb = doc_type_lower == "bphtb" || doc_type_lower.contains("sspd");
     let is_pph = doc_type_lower == "pph" || doc_type_lower.contains("suket") || doc_type_lower.contains("ssb");
+    let is_sertipikat = doc_type_lower == "sertipikat"
+        || doc_type_lower == "sertifikat"
+        || doc_type_lower.contains("sertipikat")
+        || doc_type_lower.contains("sertifikat");
 
     let mut best_file: Option<(String, PathBuf, u64)> = None;
     let mut best_score: u32 = 0;
@@ -297,6 +303,14 @@ pub fn find_pembeli_document(folder_path: &Path, doc_type: &str) -> Option<(Stri
             } else if file_name_upper.contains("PPH") || file_name_upper.contains("SUKET") || file_name_upper.contains("SSB") {
                 score += 50;
             }
+        } else if is_sertipikat {
+            if stem_upper == "SERTIPIKAT" || stem_upper == "SERTIFIKAT" {
+                score += 100;
+            } else if file_name_upper.starts_with("SERTIPIKAT") || file_name_upper.starts_with("SERTIFIKAT") {
+                score += 80;
+            } else if file_name_upper.contains("SERTIPIKAT") || file_name_upper.contains("SERTIFIKAT") {
+                score += 50;
+            }
         }
 
         if score > best_score {
@@ -339,6 +353,7 @@ pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolde
     let ktp_persetujuan_info = to_doc_info(find_pembeli_document(&folder_path, "ktp_persetujuan"));
     let ktp_penjual_info = to_doc_info(find_pembeli_document(&folder_path, "ktp_penjual"));
     let kk_penjual_info = to_doc_info(find_pembeli_document(&folder_path, "kk_penjual"));
+    let sertipikat_info = to_doc_info(find_pembeli_document(&folder_path, "sertipikat"));
 
     Ok(PembeliFolderMatch {
         buyer_query: buyer_name.to_string(),
@@ -352,5 +367,6 @@ pub fn get_pembeli_info(base_dir: &str, buyer_name: &str) -> Result<PembeliFolde
         ktp_persetujuan: Some(ktp_persetujuan_info),
         ktp_penjual: Some(ktp_penjual_info),
         kk_penjual: Some(kk_penjual_info),
+        sertipikat: Some(sertipikat_info),
     })
 }

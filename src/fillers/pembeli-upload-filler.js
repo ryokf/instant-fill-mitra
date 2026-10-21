@@ -154,6 +154,7 @@ PPAT.pembeliUploadFiller = (() => {
         else if (docLower === "pbb") defaultFilename = "PBB.pdf";
         else if (docLower === "bphtb") defaultFilename = "BPHTB.pdf";
         else if (docLower === "pph") defaultFilename = "PPH.pdf";
+        else if (docLower === "sertipikat" || docLower === "sertifikat") defaultFilename = "SERTIFIKAT.pdf";
 
         const filename = fileNameHeader || defaultFilename;
 

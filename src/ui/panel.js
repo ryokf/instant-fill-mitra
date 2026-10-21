@@ -778,6 +778,24 @@ PPAT.panel = (() => {
                 }
             }
 
+            // Otomatis unggah berkas Sertipikat (sertipikat / sertifikat) dari folder pembeli
+            if (buyerName && PPAT.sertipikatFiller && typeof PPAT.sertipikatFiller.uploadSertipikatDocument === "function") {
+                updateAllStatus(`⏳ Mengunggah berkas Sertipikat dari folder pembeli "${buyerName}"...`, "info");
+                try {
+                    const resSert = await PPAT.sertipikatFiller.uploadSertipikatDocument(buyerName, {
+                        onProgress: (msg, type) => updateAllStatus(msg, type),
+                    });
+                    if (resSert && resSert.success) {
+                        updateAllStatus(`✔ Berkas Sertipikat (${resSert.filename}) berhasil diunggah! Melanjutkan ke PBB & BPHTB...`, "ok");
+                    } else {
+                        console.warn("AutoFill PPAT: Berkas Sertipikat tidak terunggah:", resSert && resSert.error);
+                    }
+                } catch (eUpload) {
+                    console.warn("AutoFill PPAT: Gagal upload berkas sertipikat:", eUpload);
+                }
+                await PPAT.dom.delay(400);
+            }
+
             let bphtbData = PPAT.activeBphtbData || null;
             let pphData = PPAT.activePphData || null;
 

@@ -70,9 +70,11 @@
         console.log(`[PageBridge] Menerima berkas upload: ${filename} (tipe: ${tipeValue})`);
 
         try {
-            // 1. Pilih opsi pada select #tipeunggah2 jika tipeValue diberikan
+            // 1. Pilih opsi pada select #tipeunggah2 / #tipeunggahhat jika tipeValue diberikan
             if (tipeValue) {
-                const select = document.getElementById("tipeunggah2");
+                const select = document.getElementById("tipeunggah2") ||
+                               document.getElementById("tipeunggahhat") ||
+                               document.querySelector("#divsidenavhat select, #divsidenavupload2 select");
                 if (select) {
                     select.value = tipeValue;
                     if (window.jQuery) {
@@ -80,7 +82,7 @@
                     } else {
                         select.dispatchEvent(new Event("change", { bubbles: true }));
                     }
-                    console.log("[PageBridge] #tipeunggah2 diubah ke:", select.value);
+                    console.log("[PageBridge] Dropdown tipe unggah diubah ke:", select.value);
                 }
             }
 
@@ -93,16 +95,20 @@
             const blob = new Blob([byteNums], { type: mimeType || "application/pdf" });
             const file = new File([blob], filename, { type: mimeType || "application/pdf" });
 
-            // 3. SET dfupload2 langsung di window dan di scope lokal
+            // 3. SET dfupload2 / dfhat langsung di window dan di scope lokal
             window.dfupload2 = file;
+            window.dfhat = file;
+            window.dfdokumen = file;
             try {
-                eval("dfupload2 = window.dfupload2;");
+                eval("dfupload2 = window.dfupload2; dfhat = window.dfhat;");
             } catch (_) {}
 
-            console.log("[PageBridge] dfupload2 berhasil diset:", window.dfupload2);
+            console.log("[PageBridge] dfupload2/dfhat berhasil diset:", file);
 
-            // 4. Masukkan ke input file #txtUploadFileNonInputupload2 via DataTransfer
-            const input = document.getElementById("txtUploadFileNonInputupload2");
+            // 4. Masukkan ke input file via DataTransfer
+            const input = document.getElementById("txtUploadFileNonInputupload2") ||
+                          document.getElementById("txtUploadDokumenHat") ||
+                          document.querySelector("#divsidenavhat input[type='file'], #divsidenavupload2 input[type='file'], .modal.show input[type='file'], input[type='file']");
             if (input) {
                 const dt = new DataTransfer();
                 dt.items.add(file);
@@ -117,11 +123,10 @@
             // Beri jeda kecil agar change handler bawaan halaman selesai
             await new Promise((resolve) => setTimeout(resolve, 150));
 
-            // 5. Pastikan kembali dfupload2 masih tersimpan sebelum simpan
-            if (!window.dfupload2) {
-                window.dfupload2 = file;
-                try { eval("dfupload2 = window.dfupload2;"); } catch (_) {}
-            }
+            // 5. Pastikan kembali dfupload2 / dfhat masih tersimpan sebelum simpan
+            if (!window.dfupload2) window.dfupload2 = file;
+            if (!window.dfhat) window.dfhat = file;
+            try { eval("dfupload2 = window.dfupload2; dfhat = window.dfhat;"); } catch (_) {}
 
             // 6. Pastikan idreferensi2, pihak2, dan aktanoninput2 terisi
             if (data.idreferensi) window.idreferensi2 = data.idreferensi;
@@ -156,15 +161,23 @@
                 }
             }
 
-            console.log("[PageBridge] Menjalankan simpandokumenupload2()...");
+            console.log("[PageBridge] Menjalankan fungsi simpan dokumen upload...");
             if (typeof window.simpandokumenupload2 === "function") {
                 window.simpandokumenupload2();
+            } else if (typeof window.simpanUploadDokumenHat === "function") {
+                window.simpanUploadDokumenHat();
             } else {
-                const btnSimpan = document.querySelector("#divnewdokumenupload2 button[onclick*='simpandokumenupload2']");
+                const btnSimpan = document.querySelector(
+                    "#divnewdokumenupload2 button[onclick*='simpandokumenupload2'], " +
+                    "#divsidenavhat button, " +
+                    "#btn-simpanhat, " +
+                    "button[onclick*='simpanhat'], " +
+                    "button[onclick*='simpandokumen']"
+                );
                 if (btnSimpan) {
                     btnSimpan.click();
                 } else {
-                    throw new Error("Fungsi simpandokumenupload2 tidak ditemukan.");
+                    throw new Error("Fungsi simpandokumenupload2 atau tombol simpan upload tidak ditemukan.");
                 }
             }
 
@@ -276,6 +289,12 @@
                         document.querySelector(
                             "#inputSSPplaceholder input[type='file'], #frmSurat input[type='file'], #frmPPH input[type='file'], #frmPph input[type='file'], #inputPPHplaceholder input[type='file'], #inputPPhplaceholder input[type='file'], #inputpphplaceholder input[type='file'], input[name*='UploadFilePPH' i], input[name*='UploadFromFilePPH' i], input[name='UploadFromFileInstansi']"
                         );
+                } else if (section === "sertipikat" || section === "hat") {
+                    input =
+                        document.getElementById("txtUploadDokumenHat") ||
+                        document.querySelector(
+                            "#inputSertipikatplaceholder input[type='file'], #divsidenavhat input[type='file'], #inputsertipikatdiv input[type='file'], input[name*='UploadDokumenHat' i]"
+                        );
                 }
             }
 
@@ -300,6 +319,8 @@
                 try { window.dfbphtb = file; } catch (_) {}
             } else if (section === "pph") {
                 try { window.dfssp = file; window.dfupload2 = file; } catch (_) {}
+            } else if (section === "sertipikat" || section === "hat") {
+                try { window.dfhat = file; window.dfupload2 = file; window.dfdokumen = file; } catch (_) {}
             }
 
             // Pasang File ke input.files menggunakan DataTransfer

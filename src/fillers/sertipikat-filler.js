@@ -878,6 +878,195 @@ PPAT.sertipikatFiller = (() => {
         });
     }
 
+    /**
+     * Mencari elemen tombol / link 'Unggah' pada baris Sertipikat di #daftarhatplaceholder.
+     * @returns {HTMLElement|null}
+     */
+    function findBtnUnggahSertipikat() {
+        const placeholder = document.querySelector(S_SERTIPIKAT.daftarPlaceholder || "#daftarhatplaceholder");
+        if (!placeholder) return null;
+
+        const items = placeholder.querySelectorAll("li, tr, .item, .list-group-item");
+        for (const item of items) {
+            // 1. Tag <a> atau <button> dengan onclick yang mengandung kata unggah / upload / hat
+            const btnClick = item.querySelector(
+                "a[onclick*='unggah' i], button[onclick*='unggah' i], " +
+                "a[onclick*='upload' i], button[onclick*='upload' i], " +
+                "a[onclick*='hat' i], button[onclick*='hat' i]"
+            );
+            if (btnClick) return btnClick;
+
+            // 2. Element dengan title mengandung kata unggah / upload
+            const btnTitle = item.querySelector(
+                "a[title*='unggah' i], button[title*='unggah' i], " +
+                "a[title*='upload' i], button[title*='upload' i]"
+            );
+            if (btnTitle) return btnTitle;
+
+            // 3. Icon fa-upload / glyphicon-upload di dalam <a> atau <button>
+            const iconUpload = item.querySelector("i.fa-upload, i.glyphicon-upload, i.fa-cloud-upload");
+            if (iconUpload && iconUpload.closest("a, button")) {
+                return iconUpload.closest("a, button");
+            }
+
+            // 4. Tombol atau link dengan teks "Unggah" atau "Upload"
+            const buttons = item.querySelectorAll("a, button");
+            for (const b of buttons) {
+                const text = (b.textContent || "").trim().toLowerCase();
+                if (text.includes("unggah") || text.includes("upload")) {
+                    return b;
+                }
+            }
+        }
+
+        // Fallback global di dalam placeholder
+        return placeholder.querySelector(
+            "a[onclick*='unggah' i], button[onclick*='unggah' i], " +
+            "a[onclick*='upload' i], button[onclick*='upload' i], " +
+            "a[title*='unggah' i], button[title*='unggah' i]"
+        );
+    }
+
+    /**
+     * Mengunggah berkas Sertipikat secara otomatis dari folder pembeli (Pihak Kedua)
+     * setelah data Sertipikat tersimpan di 'Daftar Sertipkat HAT yang sudah diinput'.
+     *
+     * @param {string} [buyerNameParam]
+     * @param {Object} [options]
+     * @returns {Promise<{success: boolean, filename?: string, error?: string, message?: string}>}
+     */
+    async function uploadSertipikatDocument(buyerNameParam, options = {}) {
+        const onProgress = options.onProgress || console.log;
+        const updateStatus = (msg, type = "info") => {
+            console.log(`AutoFill PPAT [Upload Sertipikat]: ${msg}`);
+            if (typeof onProgress === "function") {
+                onProgress(msg, type);
+            }
+        };
+
+        // 1. Dapatkan nama pembeli aktif
+        const buyerName = (
+            buyerNameParam ||
+            (PPAT.pembeliUploadFiller &&
+                typeof PPAT.pembeliUploadFiller.getActiveBuyerName === "function" &&
+                PPAT.pembeliUploadFiller.getActiveBuyerName()) ||
+            ""
+        ).trim();
+
+        if (!buyerName) {
+            updateStatus("⚠ Nama pembeli tidak terdeteksi untuk mencari berkas Sertipikat.", "warn");
+            return { success: false, error: "Nama pembeli tidak ditemukan." };
+        }
+
+        // 2. Pastikan Sertipikat telah tersimpan di daftar sebelah kanan (#daftarhatplaceholder)
+        const isSaved = await waitForSertifikatSaved(15000);
+        if (!isSaved) {
+            updateStatus("⚠ Data Sertipikat belum tersimpan di 'Daftar Sertipkat HAT'.", "warn");
+            return { success: false, error: "Sertipikat belum tersimpan di daftar." };
+        }
+
+        // 3. Cari tombol Unggah di baris Sertipikat
+        const btnUnggah = findBtnUnggahSertipikat();
+        if (!btnUnggah) {
+            updateStatus("⚠ Tombol 'Unggah' pada baris Sertipikat HAT tidak ditemukan di halaman.", "warn");
+            return { success: false, error: "Tombol Unggah tidak ditemukan di baris Sertipikat." };
+        }
+
+        // 4. Download berkas Sertipikat dari folder pembeli (sertipikat / sertifikat)
+        updateStatus(`⏳ Mengunduh berkas Sertipikat dari folder pembeli "${buyerName}"...`, "info");
+        let docData = null;
+        try {
+            if (options.sertipikatDocPromise) {
+                docData = await options.sertipikatDocPromise;
+            } else if (PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.downloadPembeliDocument === "function") {
+                docData = await PPAT.pembeliUploadFiller.downloadPembeliDocument(buyerName, "sertipikat");
+            }
+        } catch (err) {
+            updateStatus(`⚠ Berkas Sertipikat tidak ditemukan di folder pembeli "${buyerName}": ${err.message || err}`, "warn");
+            return { success: false, error: err.message || String(err) };
+        }
+
+        if (!docData || !docData.base64) {
+            updateStatus(`⚠ Gagal membaca berkas Sertipikat dari folder pembeli (data kosong).`, "warn");
+            return { success: false, error: "Berkas Sertipikat kosong." };
+        }
+
+        updateStatus(`⏳ Menekan tombol Unggah pada baris Sertipikat (${docData.filename})...`, "info");
+        btnUnggah.click();
+        await dom.delay(400);
+
+        // 5. Kirim berkas ke Page Bridge (Main World) untuk diinjeksi dan diunggah
+        let uploadSuccess = false;
+        let resultMsg = "";
+
+        const bridgeResult = await new Promise((resolve) => {
+            const timeoutTimer = setTimeout(() => {
+                window.removeEventListener("message", onBridgeResponse);
+                resolve({ success: false, error: "Batas waktu (timeout) respons upload Page Bridge terlampaui." });
+            }, TIMING.UPLOAD_TIMEOUT_MS || 25000);
+
+            function onBridgeResponse(e) {
+                if (e.data && e.data.type === "PPAT_INJECT_AND_UPLOAD_RESPONSE") {
+                    window.removeEventListener("message", onBridgeResponse);
+                    clearTimeout(timeoutTimer);
+                    resolve(e.data);
+                }
+            }
+
+            window.addEventListener("message", onBridgeResponse);
+
+            window.postMessage({
+                type: "PPAT_INJECT_AND_UPLOAD",
+                base64: docData.base64,
+                filename: docData.filename,
+                mimeType: docData.mimeType || "application/pdf",
+                tipeValue: options.tipeValue || "",
+                pihak: "HAT",
+            }, "*");
+        });
+
+        if (bridgeResult && bridgeResult.success) {
+            // Tunggu modal konfirmasi "Data telah diunggah"
+            const modalMsg = PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.waitForGlobalModal === "function"
+                ? await PPAT.penjualUploadFiller.waitForGlobalModal(10000)
+                : null;
+
+            if (PPAT.penjualUploadFiller && typeof PPAT.penjualUploadFiller.dismissModalAndEnsureClosed === "function") {
+                await PPAT.penjualUploadFiller.dismissModalAndEnsureClosed();
+            }
+
+            uploadSuccess = true;
+            resultMsg = modalMsg || "Berkas Sertipikat berhasil diunggah.";
+            updateStatus(`✔ Berkas Sertipikat (${docData.filename}) berhasil diunggah!`, "ok");
+        } else {
+            // Fallback: coba inject langsung ke form/file input (#txtUploadDokumenHat)
+            updateStatus(`⏳ Mencoba metode fallback inject file sertipikat...`, "info");
+            const injectRes = PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.injectSectionFile === "function"
+                ? await PPAT.pembeliUploadFiller.injectSectionFile("sertipikat", "#txtUploadDokumenHat", docData)
+                : null;
+
+            if (injectRes && injectRes.success) {
+                const btnSimpan = document.querySelector("#btn-simpanhat, #divsidenavhat button, button[onclick*='simpanhat']");
+                if (btnSimpan) {
+                    btnSimpan.click();
+                    await dom.delay(500);
+                }
+                uploadSuccess = true;
+                resultMsg = "Berkas Sertipikat berhasil diinjeksi dan disimpan.";
+                updateStatus(`✔ Berkas Sertipikat (${docData.filename}) berhasil diunggah!`, "ok");
+            } else {
+                updateStatus(`⚠ Gagal mengunggah berkas Sertipikat: ${bridgeResult.error || "Gagal upload"}`, "warn");
+                return { success: false, error: bridgeResult.error || "Gagal upload berkas Sertipikat." };
+            }
+        }
+
+        return {
+            success: uploadSuccess,
+            filename: docData.filename,
+            message: resultMsg,
+        };
+    }
+
     return {
         saveSertipikat,
         getSavedSertipikat,
@@ -900,5 +1089,7 @@ PPAT.sertipikatFiller = (() => {
         fillSertipikatAJB,
         isSertifikatSaved,
         waitForSertifikatSaved,
+        findBtnUnggahSertipikat,
+        uploadSertipikatDocument,
     };
 })();

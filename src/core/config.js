@@ -222,6 +222,10 @@ PPAT.config = Object.freeze({
             btnTambah: "#btn-tambahhat",
             daftarPlaceholder: "#daftarhatplaceholder",
             daftarItems: "#daftarhatplaceholder li",
+            btnUnggah: "#daftarhatplaceholder a[onclick*='unggah' i], #daftarhatplaceholder button[onclick*='unggah' i], #daftarhatplaceholder a[title*='unggah' i]",
+            inputFile: "#txtUploadDokumenHat, #txtUploadFileNonInputupload2",
+            sideNav: "#divsidenavhat, #divsidenavupload2",
+            btnSimpanUpload: "#btn-simpanhat, #divsidenavhat button, #divnewdokumenupload2 button[onclick*='simpandokumenupload2']",
         }),
 
         pph: Object.freeze({
