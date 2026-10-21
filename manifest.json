@@ -26,6 +26,7 @@
         "src/data/pt-database.js",
         "src/data/saksi-database.js",
         "src/dom/dom-helpers.js",
+        "src/services/cloud-database.js",
         "src/services/pt-matcher.js",
         "src/fillers/penjual-filler.js",
         "src/fillers/penjual-upload-filler.js",

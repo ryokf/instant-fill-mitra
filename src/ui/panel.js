@@ -118,6 +118,11 @@ PPAT.panel = (() => {
     async function autoFillPenjualAndPersetujuan(penjualInfo, els, updateStatus, prefix = "") {
         if (!penjualInfo) return false;
 
+        // Pastikan database PT dari Supabase sudah termuat
+        if (PPAT.cloudDatabase && typeof PPAT.cloudDatabase.ensureLoaded === "function") {
+            await PPAT.cloudDatabase.ensureLoaded();
+        }
+
         const { cardPenjualPerorangan } = els;
 
         // Cari apakah data di penjualInfo cocok dengan salah satu PT di ptDatabase

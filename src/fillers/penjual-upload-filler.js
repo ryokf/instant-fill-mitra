@@ -709,6 +709,11 @@ PPAT.penjualUploadFiller = (() => {
 
         console.log(`[AutoUpload] Memulai proses otomatisasi lengkap untuk PT: '${ptName}'`);
 
+        // Pastikan database PT dari Supabase sudah termuat
+        if (PPAT.cloudDatabase && typeof PPAT.cloudDatabase.ensureLoaded === "function") {
+            await PPAT.cloudDatabase.ensureLoaded();
+        }
+
         // Cari data seluruh personil Pihak Persetujuan dari database
         const ptKey = PPAT.ptMatcher ? PPAT.ptMatcher.findPtKeyByName(ptName) : null;
         if (!ptKey && (PPAT.activePenjualPerorangan || document.querySelector("#frmtipepihak1Dukcapil") || document.querySelector("#daftarpihak1placeholder"))) {

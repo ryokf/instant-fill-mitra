@@ -22,6 +22,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     let args = Cli::parse();
 
     // Jika dipanggil tanpa argumen file input, jalankan server API di port 3001

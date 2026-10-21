@@ -425,6 +425,11 @@ PPAT.saksiFiller = (() => {
 
         onStatus("⏳ Mempersiapkan pengisian otomatis 2 Pihak Saksi...", "info");
 
+        // Pastikan database Saksi dari Supabase sudah termuat
+        if (PPAT.cloudDatabase && typeof PPAT.cloudDatabase.ensureLoaded === "function") {
+            await PPAT.cloudDatabase.ensureLoaded();
+        }
+
         // Pre-fetch berkas KTP Saksi dari folder G:\My Drive\notaris bu sri\Saksi
         const firstSaksiName = saksiList[0].nama || "";
         const ktpDocPromise = autoUploadDocs && firstSaksiName
@@ -443,7 +448,21 @@ PPAT.saksiFiller = (() => {
                 onStatus(`ℹ Saksi ${num} (${saksi.nama}) sudah terdaftar di sebelah kanan.`, "info");
             } else {
                 onStatus(`⏳ [${num}/${total}] Mengisi form Saksi ${num}: ${saksi.nama}...`, "info");
-                await fillSingle(saksi, { autoSubmit, showAlert: false });
+
+                // Lengkapi NIK dan data lainnya dari Supabase saksiDatabase jika saksi hanya berisi nama
+                let saksiToFill = saksi;
+                if ((!saksi.nik || !saksi.alamat) && Array.isArray(PPAT.saksiDatabase)) {
+                    const sNameNorm = (saksi.nama || "").trim().toLowerCase();
+                    const matched = PPAT.saksiDatabase.find((dbS) => {
+                        const dbNameNorm = (dbS.nama || "").trim().toLowerCase();
+                        return sNameNorm && (dbNameNorm.includes(sNameNorm) || sNameNorm.includes(dbNameNorm));
+                    });
+                    if (matched) {
+                        saksiToFill = { ...matched, ...saksi };
+                    }
+                }
+
+                await fillSingle(saksiToFill, { autoSubmit, showAlert: false });
                 await dom.delay(600);
             }
 

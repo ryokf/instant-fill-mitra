@@ -15,6 +15,7 @@ use crate::services::sertipikat::process_sertipikat_file;
 use crate::services::pph::process_pph_file;
 use crate::services::pt_files::{self, DEFAULT_PT_DIR};
 use crate::services::pembeli_files::{self, DEFAULT_PEMBELI_DIR};
+use crate::services::supabase;
 
 pub async fn health_check() -> Response {
     (
@@ -745,3 +746,48 @@ pub async fn get_saksi_file_download_handler(Query(query): Query<SaksiFileQuery>
     }
 }
 
+
+
+// -----------------------------------------------------------------------------
+// Handlers: Supabase Cloud Database (PT & Saksi)
+// -----------------------------------------------------------------------------
+#[derive(Deserialize, Default)]
+pub struct CloudDatabaseQuery {
+    pub refresh: Option<bool>,
+}
+
+pub async fn get_pt_database_handler(Query(query): Query<CloudDatabaseQuery>) -> Response {
+    let refresh = query.refresh.unwrap_or(false);
+    println!("[API: Supabase PT] Mengambil data PT dari cloud (refresh: {})...", refresh);
+    match supabase::get_pt_database(refresh).await {
+        Ok(data) => (StatusCode::OK, Json(data)).into_response(),
+        Err(err) => {
+            eprintln!("[API: Supabase PT] Error: {}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": err
+                })),
+            ).into_response()
+        }
+    }
+}
+
+pub async fn get_saksi_database_handler(Query(query): Query<CloudDatabaseQuery>) -> Response {
+    let refresh = query.refresh.unwrap_or(false);
+    println!("[API: Supabase Saksi] Mengambil data Saksi dari cloud (refresh: {})...", refresh);
+    match supabase::get_saksi_database(refresh).await {
+        Ok(data) => (StatusCode::OK, Json(data)).into_response(),
+        Err(err) => {
+            eprintln!("[API: Supabase Saksi] Error: {}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "error": err
+                })),
+            ).into_response()
+        }
+    }
+}

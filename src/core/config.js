@@ -12,6 +12,8 @@ PPAT.config = Object.freeze({
     EXTRACT_PEMBELI_BPHTB_URL: "http://127.0.0.1:3001/api/extract-pembeli-bphtb",
     EXTRACT_PEMBELI_PPH_URL: "http://127.0.0.1:3001/api/extract-pembeli-pph",
     SAKSI_FILE_DOWNLOAD_URL: "http://127.0.0.1:3001/api/saksi-file",
+    PT_DATABASE_URL: "http://127.0.0.1:3001/api/pt-database",
+    SAKSI_DATABASE_URL: "http://127.0.0.1:3001/api/saksi-database",
 
     TIMING: Object.freeze({
         POLL_INTERVAL_MS: 150, // interval cek elemen saat menunggu muncul

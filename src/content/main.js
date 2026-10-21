@@ -4,6 +4,9 @@
  */
 (function main() {
     function init() {
+        if (PPAT.cloudDatabase && typeof PPAT.cloudDatabase.load === "function") {
+            PPAT.cloudDatabase.load();
+        }
         PPAT.panel.create();
         if (PPAT.sertipikatFiller && typeof PPAT.sertipikatFiller.checkAndExecuteOpenedBerkasFlow === "function") {
             PPAT.sertipikatFiller.checkAndExecuteOpenedBerkasFlow();

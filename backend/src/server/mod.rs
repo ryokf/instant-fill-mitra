@@ -36,6 +36,9 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         // Saksi Documents (KTP Saksi G:\My Drive\notaris bu sri\Saksi)
         .route("/api/saksi-file", get(handlers::get_saksi_file_download_handler))
         .route("/api/saksi-file-download", get(handlers::get_saksi_file_download_handler))
+        // Supabase Cloud Database (PT & Saksi)
+        .route("/api/pt-database", get(handlers::get_pt_database_handler))
+        .route("/api/saksi-database", get(handlers::get_saksi_database_handler))
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max upload
         .layer(cors);
 
@@ -52,6 +55,8 @@ pub async fn start_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     println!("  5. Auto PBB/BPHTB  : GET  /api/extract-pembeli-bphtb ");
     println!("  6. Auto PPh        : GET  /api/extract-pembeli-pph   ");
     println!("  7. Dokumen Saksi   : GET  /api/saksi-file            ");
+    println!("  8. Database PT     : GET  /api/pt-database           ");
+    println!("  9. Database Saksi  : GET  /api/saksi-database        ");
     println!("=======================================================");
 
     loop {
