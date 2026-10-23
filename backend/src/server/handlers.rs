@@ -137,16 +137,17 @@ pub async fn extract_pembeli_handler(multipart: Multipart) -> Response {
     println!("[API: Pembeli] Memproses dokumen akta: {} ({} bytes)...", filename, bytes.len());
 
     let result = execute_winrt_task("akta_upload", &filename, &bytes, |path| async move {
-        process_akta_pdf(&path, 2.0, None).await
+        process_akta_pdf(&path, 2.5, None).await
     }).await;
 
     match result {
         Ok(crop_result) => {
             println!(
-                "[API: Pembeli] Berhasil - No Akta: {}, Tgl: {}, Nama: {}",
+                "[API: Pembeli] Berhasil - No Akta: {}, Tgl: {}, Nama: {} (Total Pembeli: {})",
                 crop_result.akta_info.nomor_akta,
                 crop_result.akta_info.tanggal_akta,
-                crop_result.buyer_info.nama
+                crop_result.buyer_info.nama,
+                crop_result.buyers.len()
             );
             (
                 StatusCode::OK,
@@ -154,6 +155,7 @@ pub async fn extract_pembeli_handler(multipart: Multipart) -> Response {
                     "success": true,
                     "message": "Data akta dan pembeli berhasil diekstrak.",
                     "data": crop_result.buyer_info,
+                    "buyers": crop_result.buyers,
                     "akta": crop_result.akta_info,
                     "penjual": crop_result.penjual_info,
                     "saksi": crop_result.saksi,

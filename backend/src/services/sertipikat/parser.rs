@@ -249,12 +249,12 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     let mut kabupaten = String::new();
     let mut provinsi = String::new();
 
-    let re_desa = Regex::new(r"(?i)(?:desa|kelurahan)\s+([A-Za-z\s]+?)(?:\s+kecamatan|\s+kabupaten|$)").unwrap();
+    let re_desa = Regex::new(r"(?i)(?:desa|kelurahan)\s+([A-Za-z\s]+?)(?:\s+kecamatan|\s+kabupaten|\n|$)").unwrap();
     if let Some(caps) = re_desa.captures(&raw_text) {
         desa = clean_text(&caps[1]);
     }
 
-    let re_kec = Regex::new(r"(?i)kecamatan\s+([A-Za-z\s]+?)(?:\s+kabupaten|\s+kota|$)").unwrap();
+    let re_kec = Regex::new(r"(?i)kecamatan\s+([A-Za-z\s]+?)(?:\s+kabupaten|\s+kota|\n|$)").unwrap();
     if let Some(caps) = re_kec.captures(&raw_text) {
         kecamatan = clean_text(&caps[1]);
     }

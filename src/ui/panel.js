@@ -293,13 +293,65 @@ PPAT.panel = (() => {
             statusAkta.textContent = text;
         };
 
-        const renderPembeliCard = (data, akta) => {
+        const renderPembeliCard = (data, akta, buyers = []) => {
             if (!cardPembeli) return;
-            pembeliNama.textContent = data.nama || "-";
-            pembeliNik.textContent = data.nik || "-";
-            pembeliPekerjaan.textContent = data.pekerjaan || "-";
             if (aktaNomor) aktaNomor.textContent = (akta && akta.nomor_akta) || data.nomor_akta || "-";
             if (aktaTanggal) aktaTanggal.textContent = (akta && akta.tanggal_akta) || data.tanggal_akta || "-";
+
+            // Bersihkan kartu pembeli dinamis sebelumnya jika ada
+            const existingDynamic = cardPembeli.querySelectorAll(".ppat-multi-buyer-item");
+            existingDynamic.forEach(el => el.remove());
+
+            if (buyers && buyers.length > 1) {
+                // Sembunyikan baris single pembeli default agar tampilan rapi
+                if (pembeliNama && pembeliNama.parentElement) pembeliNama.parentElement.style.display = "none";
+                if (pembeliNik && pembeliNik.parentElement) pembeliNik.parentElement.style.display = "none";
+                if (pembeliPekerjaan && pembeliPekerjaan.parentElement) pembeliPekerjaan.parentElement.style.display = "none";
+
+                // Render kartu untuk setiap pembeli
+                buyers.forEach((b, idx) => {
+                    const item = document.createElement("div");
+                    item.className = "ppat-multi-buyer-item";
+                    item.style.cssText = "margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1;";
+                    item.innerHTML = `
+                        <div class="ppat-person-card-header">
+                            <span class="ppat-person-name" style="font-size:12px; font-weight:600;">${idx + 1}. ${b.nama || "-"}</span>
+                            <span class="ppat-person-badge" style="background:#059669;">Pembeli ${idx + 1}</span>
+                        </div>
+                        <div class="ppat-person-meta">NIK: <b>${b.nik || "-"}</b></div>
+                        <div class="ppat-person-meta">Lahir: <span>${b.tempat_lahir ? b.tempat_lahir + ", " : ""}${b.tgl_lahir || "-"}</span></div>
+                        <div class="ppat-person-meta">Pekerjaan: <span>${b.pekerjaan || "-"}</span></div>
+                        <div style="margin-top:6px;">
+                            <button type="button" class="ppat-btn-fill ppat-btn-fill-buyer-${idx}" style="background:#059669; width:100%; padding:5px 8px; font-size:11px;" title="Isikan data Pembeli ${idx + 1} (${b.nama}) ke form Mitra">
+                                ✍️ Isi Pembeli ${idx + 1} ke Form
+                            </button>
+                        </div>
+                    `;
+                    const fillBtn = item.querySelector(`.ppat-btn-fill-buyer-${idx}`);
+                    if (fillBtn) {
+                        fillBtn.addEventListener("click", async () => {
+                            if (PPAT.pembeliFiller) {
+                                PPAT.activePembeliData = b;
+                                if (b.nama && PPAT.pembeliUploadFiller && typeof PPAT.pembeliUploadFiller.saveActiveBuyerName === "function") {
+                                    PPAT.pembeliUploadFiller.saveActiveBuyerName(b.nama);
+                                }
+                                setUploadStatus(`⏳ Mengisi data Pembeli ${idx + 1} (${b.nama})...`, "info");
+                                await PPAT.pembeliFiller.fill(b, { autoSubmit: false, scrollIntoView: true });
+                                setUploadStatus(`✔ Data Pembeli ${idx + 1} (${b.nama}) berhasil diisikan ke form! Silakan klik Tambah di Mitra.`, "ok");
+                            }
+                        });
+                    }
+                    cardPembeli.appendChild(item);
+                });
+            } else {
+                if (pembeliNama && pembeliNama.parentElement) pembeliNama.parentElement.style.display = "flex";
+                if (pembeliNik && pembeliNik.parentElement) pembeliNik.parentElement.style.display = "block";
+                if (pembeliPekerjaan && pembeliPekerjaan.parentElement) pembeliPekerjaan.parentElement.style.display = "block";
+                pembeliNama.textContent = data.nama || "-";
+                pembeliNik.textContent = data.nik || "-";
+                pembeliPekerjaan.textContent = data.pekerjaan || "-";
+            }
+
             cardPembeli.classList.remove("hidden");
         };
 
@@ -326,7 +378,12 @@ PPAT.panel = (() => {
                 const result = await response.json();
 
                 if (response.ok && result.success && result.data) {
+                    const buyersList = (result.buyers && Array.isArray(result.buyers) && result.buyers.length > 0)
+                        ? result.buyers
+                        : [result.data];
+
                     // Simpan data pembeli untuk pengisian otomatis dan pencocokan folder dokumen pembeli
+                    PPAT.activePembeliList = buyersList;
                     PPAT.activePembeliData = result.data;
                     if (
                         result.data.nama &&
@@ -340,7 +397,7 @@ PPAT.panel = (() => {
                         tanggal_akta: result.data.tanggal_akta,
                     };
 
-                    renderPembeliCard(result.data, aktaData);
+                    renderPembeliCard(result.data, aktaData, buyersList);
 
                     // Simpan data 2 saksi hasil ekstraksi akta AJB untuk diisi otomatis pada Langkah 6
                     if (result.saksi && Array.isArray(result.saksi) && result.saksi.length > 0) {
@@ -364,19 +421,29 @@ PPAT.panel = (() => {
 
                     // LANGKAH 4: Mengisikan data pembeli di Section Pembeli dengan data yang sudah diekstrak dari AJB
                     if (PPAT.pembeliFiller) {
+                        const buyer1 = buyersList[0] || result.data;
+                        const multiBuyerNote = buyersList.length > 1 ? ` (1 dari ${buyersList.length} pembeli)` : "";
                         setUploadStatus(
-                            `⏳ ${aktaStatusPrefix}Mengisi data Pihak Pembeli (${result.data.nama || "-"})...`,
+                            `⏳ ${aktaStatusPrefix}Mengisi data Pihak Pembeli${multiBuyerNote} (${buyer1.nama || "-"})...`,
                             "info"
                         );
                         await PPAT.dom.delay(500);
-                        await PPAT.pembeliFiller.fill(result.data, {
+                        await PPAT.pembeliFiller.fill(buyer1, {
                             autoSubmit: false,
                             scrollIntoView: true,
                         });
-                        setUploadStatus(
-                            `✔ ${aktaStatusPrefix}Data Akta, Penjual, Persetujuan & Pembeli (${result.data.nama || "-"}) berhasil diisi!`,
-                            "ok"
-                        );
+                        if (buyersList.length > 1) {
+                            const buyerNames = buyersList.map((b, i) => `${i + 1}. ${b.nama}`).join(", ");
+                            setUploadStatus(
+                                `✔ ${aktaStatusPrefix}Ditemukan ${buyersList.length} Pembeli (${buyerNames}). Data Pembeli 1 (${buyer1.nama}) telah diisikan ke form. Klik 'Isi Pembeli 2' setelah menambahkan Pembeli 1 di web Mitra.`,
+                                "ok"
+                            );
+                        } else {
+                            setUploadStatus(
+                                `✔ ${aktaStatusPrefix}Data Akta, Penjual, Persetujuan & Pembeli (${buyer1.nama || "-"}) berhasil diisi!`,
+                                "ok"
+                            );
+                        }
                     }
                 } else {
                     const err = result.error || result.message || "Gagal memproses akta PDF.";

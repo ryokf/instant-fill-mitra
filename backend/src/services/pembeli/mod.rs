@@ -9,7 +9,7 @@ use windows::Media::Ocr::OcrEngine;
 use windows::Storage::StorageFile;
 
 use crate::core::pdf::render_pdf_page;
-use crate::core::ocr::run_ocr_on_image;
+use crate::core::ocr::{run_ocr_page_with_layout, OcrPageLines};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CropResult {
@@ -19,6 +19,8 @@ pub struct CropResult {
     pub rotation_applied: u32,
     pub raw_text: String,
     pub buyer_info: parser::BuyerJsonOutput,
+    #[serde(default)]
+    pub buyers: Vec<parser::BuyerJsonOutput>,
     pub akta_info: parser::AktaInfo,
     pub penjual_info: parser::PenjualOutput,
     pub saksi: Vec<parser::SaksiOutput>,
@@ -83,11 +85,18 @@ fn is_seller_conclusion(text: &str) -> bool {
 
 fn is_footer_line(text: &str) -> bool {
     let lower = text.to_lowercase();
-    lower.contains("akta jual beli")
-        || lower.contains("akta juaz beti")
-        || lower.contains("akta juat beti")
-        || lower.contains("halaman ")
+    lower.contains("akta jual")
+        || lower.contains("akta juaz")
+        || lower.contains("akta juat")
+        || lower.contains("jual beli")
+        || lower.contains("juaz beli")
+        || lower.contains("juaz beti")
+        || lower.contains("wahyuning")
+        || lower.contains("wahyumng")
         || lower.contains("daerah kerja")
+        || lower.contains("daerqh kerja")
+        || lower.contains("daesah kerj")
+        || lower.contains("halaman ")
         || lower.contains("lembar ")
 }
 
@@ -105,18 +114,18 @@ fn is_header_or_footer_line(text: &str) -> bool {
 }
 
 pub fn extract_seller_lines_until(
-    pages_data: &[(Vec<String>, u32)],
+    pages_layout: &[(OcrPageLines, u32)],
     buyer_start_page: usize,
     buyer_start_line: usize,
 ) -> String {
     let mut seller_lines: Vec<String> = Vec::new();
     let mut collecting = false;
 
-    for (page_idx, (lines, _)) in pages_data.iter().enumerate() {
+    for (page_idx, (page_ocr, _)) in pages_layout.iter().enumerate() {
         if page_idx > buyer_start_page {
             break;
         }
-        for (line_idx, line) in lines.iter().enumerate() {
+        for (line_idx, line) in page_ocr.body_lines.iter().enumerate() {
             if page_idx == buyer_start_page && line_idx >= buyer_start_line {
                 break;
             }
@@ -128,7 +137,9 @@ pub fn extract_seller_lines_until(
 
             if !collecting {
                 let trimmed = line.trim();
-                if low.contains("akhir akta ini")
+                if low.contains("akhir akta")
+                    || low.contains("pada bagian")
+                    || low.contains("bagian akhir")
                     || trimmed.starts_with("I.")
                     || trimmed.starts_with("1.")
                     || trimmed.starts_with("I-")
@@ -143,7 +154,9 @@ pub fn extract_seller_lines_until(
                     || low.contains("berhadapan dengan saya")
                 {
                     collecting = true;
-                    if low.contains("akhir akta ini")
+                    if low.contains("akhir akta")
+                        || low.contains("pada bagian")
+                        || low.contains("bagian akhir")
                         || low.contains("menghadap kepada saya")
                         || low.contains("hadir di hadapan saya")
                         || low.contains("hadir dihadapan saya")
@@ -155,6 +168,10 @@ pub fn extract_seller_lines_until(
             }
 
             if collecting {
+                let trimmed = line.trim();
+                if trimmed == "ini:" || trimmed == "akta ini:" || trimmed == ":" || trimmed == "." {
+                    continue;
+                }
                 seller_lines.push(line.clone());
             }
         }
@@ -177,8 +194,8 @@ pub async fn process_akta_pdf(
     let total_pages = doc.PageCount()? as usize;
     let engine = OcrEngine::TryCreateFromUserProfileLanguages()?;
 
-    // 1. Render dan OCR halaman per halaman, langsung berhenti begitu penutup pembeli ditemukan
-    let mut pages_data: Vec<(Vec<String>, u32)> = Vec::new(); // (lines, rotation)
+    // 1. Render dan OCR halaman per halaman dengan pemisahan tata letak kolom
+    let mut pages_layout: Vec<(OcrPageLines, u32)> = Vec::new(); // (layout, rotation)
     let mut end_location: Option<(usize, usize)> = None; // (page_idx, line_idx)
 
     async fn render_and_prepare_page(doc: &PdfDocument, page_idx: u32, scale: f32) -> Result<(RgbaImage, u32), String> {
@@ -218,17 +235,17 @@ pub async fn process_akta_pdf(
             None
         };
 
-        let lines = run_ocr_on_image(&upright_img, &engine).await?;
+        let page_ocr = run_ocr_page_with_layout(&upright_img, &engine).await?;
 
-        // Cek apakah penutup pembeli ada di halaman ini
-        for (l_idx, line) in lines.iter().enumerate() {
+        // Cek apakah penutup pembeli ada di kolom badan akta pada halaman ini
+        for (l_idx, line) in page_ocr.body_lines.iter().enumerate() {
             if is_buyer_conclusion(line) {
                 end_location = Some((page_idx, l_idx));
                 break;
             }
         }
 
-        pages_data.push((lines, rot));
+        pages_layout.push((page_ocr, rot));
 
         if end_location.is_some() {
             if let Some(task) = next_render_task {
@@ -242,7 +259,8 @@ pub async fn process_akta_pdf(
 
     let (end_page_idx, end_line_idx) = end_location.ok_or("Bagian data pembeli tidak ditemukan dalam dokumen akta.")?;
 
-    let (lines_end, rot_applied) = &pages_data[end_page_idx];
+    let (layout_end, rot_applied) = &pages_layout[end_page_idx];
+    let lines_end = &layout_end.body_lines;
 
     let mut start_line_same_page = None;
     for l_idx in (0..end_line_idx).rev() {
@@ -258,11 +276,19 @@ pub async fn process_akta_pdf(
 
     // Ekstrak Nomor Akta dan Tanggal Akta dari Halaman 1 & Halaman 2
     let empty_lines = Vec::new();
-    let p1_lines = pages_data.get(0).map(|p| &p.0).unwrap_or(&empty_lines);
-    let p2_lines = pages_data.get(1).map(|p| &p.0).unwrap_or(&empty_lines);
+    let p1_lines = pages_layout.get(0).map(|p| &p.0.all_lines).unwrap_or(&empty_lines);
+    let p2_lines = pages_layout.get(1).map(|p| &p.0.all_lines).unwrap_or(&empty_lines);
 
     let nomor_akta = parser::parse_akta_nomor(p1_lines, p2_lines);
-    let tanggal_akta = parser::parse_akta_tanggal(p2_lines);
+    let mut tanggal_akta = parser::parse_akta_tanggal(p2_lines);
+    // Sinkronisasi tahun tanggal akta dengan tahun dari nomor akta (misal nomor "606/2026" -> tanggal tahun "2026")
+    let re_akta_yr = regex::Regex::new(r"/(20\d{2})\b").unwrap();
+    if let Some(c) = re_akta_yr.captures(&nomor_akta) {
+        let yr = &c[1];
+        if tanggal_akta.len() == 10 && !tanggal_akta.ends_with(yr) {
+            tanggal_akta.replace_range(6..10, yr);
+        }
+    }
 
     let akta_info = parser::AktaInfo {
         nomor_akta: nomor_akta.clone(),
@@ -271,8 +297,8 @@ pub async fn process_akta_pdf(
 
     // Ekstraksi saksi dari teks dokumen dan sisa halaman penutup akta
     let mut all_doc_text = String::new();
-    for (lines, _) in &pages_data {
-        all_doc_text.push_str(&lines.join("\n"));
+    for (page_ocr, _) in &pages_layout {
+        all_doc_text.push_str(&page_ocr.all_lines.join("\n"));
         all_doc_text.push('\n');
     }
 
@@ -281,8 +307,8 @@ pub async fn process_akta_pdf(
     if saksi_list.len() < 2 {
         for p_idx in (end_page_idx + 1)..total_pages {
             if let Ok((up_img, _)) = render_and_prepare_page(&doc, p_idx as u32, scale).await {
-                if let Ok(lines) = run_ocr_on_image(&up_img, &engine).await {
-                    all_doc_text.push_str(&lines.join("\n"));
+                if let Ok(page_ocr) = run_ocr_page_with_layout(&up_img, &engine).await {
+                    all_doc_text.push_str(&page_ocr.all_lines.join("\n"));
                     all_doc_text.push('\n');
                     let found = parser::extract_saksi_from_text(&all_doc_text);
                     if found.len() >= 2 {
@@ -298,16 +324,38 @@ pub async fn process_akta_pdf(
         saksi_list = parser::extract_saksi_from_text(&all_doc_text);
     }
 
+    // Kumpulkan seluruh teks catatan margin / renvoi dari halaman-halaman yang relevan
+    let margin_texts: Vec<String> = pages_layout
+        .iter()
+        .filter(|(p, _)| !p.margin_lines.is_empty())
+        .map(|(p, _)| {
+            p.margin_lines
+                .iter()
+                .filter(|l| !is_header_or_footer_line(l))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .collect();
+
     // KASUS A: Seluruh data pembeli berada pada SATU halaman yang sama
     if let Some(start_line_idx) = start_line_same_page {
-        let seller_raw_text = extract_seller_lines_until(&pages_data, end_page_idx, start_line_idx);
+        let seller_raw_text = extract_seller_lines_until(&pages_layout, end_page_idx, start_line_idx);
         let penjual_info = parser::parse_penjual_section(&seller_raw_text);
 
         let selected_lines = &lines_end[start_line_idx..=end_line_idx];
         let raw_text = selected_lines.join("\n");
-        let mut buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
-        buyer_info.nomor_akta = nomor_akta;
-        buyer_info.tanggal_akta = tanggal_akta;
+        let mut buyers = parser::parse_all_buyers(&raw_text, &margin_texts, custom_id);
+        for b in &mut buyers {
+            b.nomor_akta = nomor_akta.clone();
+            b.tanggal_akta = tanggal_akta.clone();
+        }
+        let buyer_info = buyers.first().cloned().unwrap_or_else(|| {
+            let mut single = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
+            single.nomor_akta = nomor_akta.clone();
+            single.tanggal_akta = tanggal_akta.clone();
+            single
+        });
 
         return Ok(CropResult {
             success: true,
@@ -316,6 +364,7 @@ pub async fn process_akta_pdf(
             rotation_applied: *rot_applied,
             raw_text,
             buyer_info,
+            buyers,
             akta_info,
             penjual_info,
             saksi: saksi_list,
@@ -325,7 +374,8 @@ pub async fn process_akta_pdf(
     // KASUS B: Data pembeli TERPOTONG DUA HALAMAN
     if end_page_idx > 0 {
         let start_page_idx = end_page_idx - 1;
-        let (lines_start, _) = &pages_data[start_page_idx];
+        let (layout_start, _) = &pages_layout[start_page_idx];
+        let lines_start = &layout_start.body_lines;
 
         let mut seller_end_idx = None;
         for (l_idx, line) in lines_start.iter().enumerate() {
@@ -356,7 +406,7 @@ pub async fn process_akta_pdf(
 
         let start_line_idx = start_line_prev.unwrap_or(0);
 
-        let seller_raw_text = extract_seller_lines_until(&pages_data, start_page_idx, start_line_idx);
+        let seller_raw_text = extract_seller_lines_until(&pages_layout, start_page_idx, start_line_idx);
         let penjual_info = parser::parse_penjual_section(&seller_raw_text);
 
         let mut selected_lines_p1: Vec<String> = Vec::new();
@@ -371,12 +421,22 @@ pub async fn process_akta_pdf(
 
         let mut raw_lines = selected_lines_p1;
         for line in selected_lines_p2 {
-            raw_lines.push(line.clone());
+            if !is_header_or_footer_line(line) {
+                raw_lines.push(line.clone());
+            }
         }
         let raw_text = raw_lines.join("\n");
-        let mut buyer_info = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
-        buyer_info.nomor_akta = nomor_akta;
-        buyer_info.tanggal_akta = tanggal_akta;
+        let mut buyers = parser::parse_all_buyers(&raw_text, &margin_texts, custom_id);
+        for b in &mut buyers {
+            b.nomor_akta = nomor_akta.clone();
+            b.tanggal_akta = tanggal_akta.clone();
+        }
+        let buyer_info = buyers.first().cloned().unwrap_or_else(|| {
+            let mut single = parser::parse_buyer_to_custom_json(&raw_text, custom_id);
+            single.nomor_akta = nomor_akta.clone();
+            single.tanggal_akta = tanggal_akta.clone();
+            single
+        });
 
         return Ok(CropResult {
             success: true,
@@ -385,6 +445,7 @@ pub async fn process_akta_pdf(
             rotation_applied: *rot_applied,
             raw_text,
             buyer_info,
+            buyers,
             akta_info,
             penjual_info,
             saksi: saksi_list,
@@ -397,6 +458,44 @@ pub async fn process_akta_pdf(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_inspect_current_ajb_two_buyers() {
+        let path = Path::new(r"C:\Users\ryokh\.gemini\antigravity\brain\32be2e3c-05f6-4bc4-b62f-d320cb6bd1b3\.user_uploaded\media_1792765190084_105a74b5.pdf");
+        if path.exists() {
+            let res = process_akta_pdf(path, 2.5, None).await.unwrap();
+            println!("Nomor Akta: {}", res.akta_info.nomor_akta);
+            println!("Tanggal Akta: {}", res.akta_info.tanggal_akta);
+            println!("=== RAW TEXT ===");
+            println!("{}", res.raw_text);
+            for (m_idx, b) in res.buyers.iter().enumerate() {
+                println!("=== BUYER {} DEBUG ===", m_idx + 1);
+                println!("Nama: '{}', NIK: '{}', Lahir: '{}', Tgl: '{}', Job: '{}', Alamat: '{}'",
+                    b.nama, b.nik, b.tempat_lahir, b.tgl_lahir, b.pekerjaan, b.alamat
+                );
+            }
+            println!("Total pembeli ditemukan: {}", res.buyers.len());
+            for (idx, b) in res.buyers.iter().enumerate() {
+                println!("Pembeli {}: {} (NIK: {}, Lahir: {}, Tgl: {}, Pekerjaan: {}, Alamat: {})",
+                    idx + 1, b.nama, b.nik, b.tempat_lahir, b.tgl_lahir, b.pekerjaan, b.alamat
+                );
+            }
+            assert_eq!(res.buyers.len(), 2, "Harus menemukan 2 data pembeli!");
+            assert_eq!(res.akta_info.nomor_akta, "243/2026");
+            assert_eq!(res.akta_info.tanggal_akta, "15/06/2026");
+            assert_eq!(res.buyers[0].nama, "SOLEH");
+            assert_eq!(res.buyers[0].nik, "3309092906880002");
+            assert_eq!(res.buyers[0].tempat_lahir, "Boyolali");
+            assert_eq!(res.buyers[0].tgl_lahir, "29/06/1988");
+            assert_eq!(res.buyers[0].pekerjaan, "Pegawai Negeri Sipil (PNS)");
+
+            assert!(res.buyers[1].nama.contains("ARDELLA"));
+            assert_eq!(res.buyers[1].nik, "3321116401880001");
+            assert_eq!(res.buyers[1].tempat_lahir, "Demak");
+            assert_eq!(res.buyers[1].tgl_lahir, "24/01/1988");
+            assert_eq!(res.buyers[1].pekerjaan, "Pegawai Negeri Sipil (PNS)");
+        }
+    }
 
     #[tokio::test]
     async fn test_inspect_ajb() {

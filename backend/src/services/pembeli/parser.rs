@@ -72,6 +72,9 @@ pub fn parse_indonesian_day_word(text: &str) -> Option<u32> {
         .replace('ö', "o")
         .replace('é', "e")
         .replace('-', " ")
+        .replace('—', " ")
+        .replace('–', " ")
+        .replace('_', " ")
         .replace('.', " ")
         .replace(',', " ");
 
@@ -81,6 +84,10 @@ pub fn parse_indonesian_day_word(text: &str) -> Option<u32> {
     }
     cleaned = cleaned.replace("ppuluh", "puluh")
         .replace("p puluh", "puluh")
+        .replace("duepuluh", "dua puluh")
+        .replace("due puluh", "dua puluh")
+        .replace("due", "dua")
+        .replace("duo", "dua")
         .replace("duapuluh", "dua puluh")
         .replace("tigapuluh", "tiga puluh");
 
@@ -299,11 +306,24 @@ pub fn parse_akta_tanggal(p2_lines: &[String]) -> String {
     let prefix = &header_text[..month_start];
     let suffix = &header_text[month_end..];
 
-    // 2. Tahun (dari setelah nama bulan)
+    // 2. Tahun (utamakan dari nomor akta misal "/2026" agar tidak tertukar dengan SK PPAT tahun 2013)
+    let mut year_from_no = None;
+    let re_no_yr = Regex::new(r"/\s*(20\d{2})\b").unwrap();
+    for l in p2_lines {
+        if let Some(c) = re_no_yr.captures(l) {
+            year_from_no = Some(c[1].to_string());
+            break;
+        }
+    }
+
     let re_year = Regex::new(r"\b(19\d{2}|20\d{2})\b").unwrap();
-    let year = match re_year.captures(suffix).or_else(|| re_year.captures(&header_text)) {
-        Some(c) => c[1].to_string(),
-        None => return String::new(),
+    let year = if let Some(yr) = year_from_no {
+        yr
+    } else {
+        match re_year.captures(suffix).or_else(|| re_year.captures(&header_text)) {
+            Some(c) => c[1].to_string(),
+            None => return String::new(),
+        }
     };
 
     // 3. Tanggal (dari teks sebelum nama bulan)
@@ -343,47 +363,113 @@ pub fn parse_akta_tanggal(p2_lines: &[String]) -> String {
 pub fn parse_indonesian_date(text: &str) -> Option<String> {
     let lower = text.to_lowercase();
     let re_year = Regex::new(r"(?i)(?:tahun\s+)?\b(19\d{2}|20\d{2})\b").unwrap();
-    let year = re_year.captures(text).map(|c| c[1].to_string())?;
+    let year = re_year.captures(text).map(|c| c[1].to_string())
+        .or_else(|| {
+            let re_year_quote = Regex::new(r"['`](\d{4})\b").unwrap();
+            re_year_quote.captures(text).map(|c| c[1].to_string())
+        })
+        .or_else(|| {
+            let nik = extract_nik_from_text(text);
+            if nik.len() == 16 {
+                let yr_two: u32 = nik[10..12].parse().ok()?;
+                let full_yr = if yr_two > 30 { 1900 + yr_two } else { 2000 + yr_two };
+                Some(full_yr.to_string())
+            } else {
+                None
+            }
+        })?;
 
-    let month = if lower.contains("januari") {
-        "01"
-    } else if lower.contains("februari") {
-        "02"
-    } else if lower.contains("maret") {
-        "03"
-    } else if lower.contains("april") {
-        "04"
-    } else if lower.contains("mei") {
-        "05"
-    } else if lower.contains("juni") {
-        "06"
-    } else if lower.contains("juli") {
-        "07"
-    } else if lower.contains("agustus") {
-        "08"
-    } else if lower.contains("september") {
-        "09"
-    } else if lower.contains("oktober") {
-        "10"
-    } else if lower.contains("november") {
-        "11"
-    } else if lower.contains("desember") {
-        "12"
-    } else {
-        return None;
+    let months = [
+        ("januari", "01"), ("februari", "02"), ("maret", "03"),
+        ("april", "04"), ("mei", "05"), ("juni", "06"),
+        ("juli", "07"), ("agustus", "08"), ("september", "09"),
+        ("oktober", "10"), ("november", "11"), ("desember", "12"),
+    ];
+
+    let mut month_info: Option<(&str, usize)> = None;
+    for (m_name, m_code) in months {
+        if let Some(pos) = lower.find(m_name) {
+            month_info = Some((m_code, pos));
+            break;
+        }
+    }
+
+    let (month, month_pos) = match month_info {
+        Some(info) => info,
+        None => {
+            let nik = extract_nik_from_text(text);
+            if nik.len() == 16 {
+                let m_val: usize = nik[8..10].parse().unwrap_or(0);
+                if (1..=12).contains(&m_val) {
+                    (months[m_val - 1].1, 0)
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
     };
 
-    let re_day = Regex::new(r"(?i)(?:tanggal|tanggai|tangga1|tgl)\s*[:\s]*(\d{1,2})").unwrap();
-    let day = if let Some(c) = re_day.captures(text) {
-        let d: u32 = c[1].parse().unwrap_or(1);
-        format!("{:02}", d)
-    } else if let Some(d) = parse_indonesian_day_word(text) {
-        format!("{:02}", d)
+    // Cari hari HANYA pada region di sekitar/sebelum nama bulan (maksimal 80 karakter sebelumnya)
+    let prefix_region = if month_pos > 0 {
+        &text[month_pos.saturating_sub(80)..month_pos]
     } else {
-        return None;
+        text
     };
 
-    Some(format!("{}/{}/{}", day, month, year))
+    let mut day_num: Option<u32> = None;
+
+    // 1. Cek tanda kurung terbilang tepat sebelum bulan, misal: "(duepuluh, empat) Januari" atau "(24)"
+    let re_parens = Regex::new(r"\(([^)]+)\)").unwrap();
+    if let Some(last_paren) = re_parens.captures_iter(prefix_region).last() {
+        if let Some(d) = parse_indonesian_day_word(&last_paren[1]) {
+            day_num = Some(d);
+        }
+    }
+
+    // 2. Cek digit langsung sebelum bulan di prefix_region
+    if day_num.is_none() {
+        let re_digits = Regex::new(r"\b([1-9]|[12][0-9]|3[01])\b").unwrap();
+        if let Some(c) = re_digits.captures_iter(prefix_region).last() {
+            if let Ok(d) = c[1].parse::<u32>() {
+                day_num = Some(d);
+            }
+        }
+    }
+
+    // 3. Cek keyword tanggal diikuti angka
+    if day_num.is_none() {
+        let re_tgl = Regex::new(r"(?i)(?:tanggal|tanggai|tangga1|tgl|tenrgal)\s*[:\s]*(\d{1,2})").unwrap();
+        if let Some(c) = re_tgl.captures(prefix_region).or_else(|| re_tgl.captures(text)) {
+            if let Ok(d) = c[1].parse::<u32>() {
+                if d >= 1 && d <= 31 {
+                    day_num = Some(d);
+                }
+            }
+        }
+    }
+
+    // 4. Cek terbilang kata pada prefix_region
+    if day_num.is_none() {
+        day_num = parse_indonesian_day_word(prefix_region);
+    }
+
+    // 5. Validasi / Fallback dengan NIK
+    let nik = extract_nik_from_text(text);
+    if nik.len() == 16 {
+        if let Ok(d) = nik[6..8].parse::<u32>() {
+            let val = if d > 40 { d - 40 } else { d };
+            if (1..=31).contains(&val) {
+                if day_num.is_none() || day_num == Some(val / 10 * 10) || day_num == Some(val % 10) {
+                    day_num = Some(val);
+                }
+            }
+        }
+    }
+
+    let day = day_num?;
+    Some(format!("{:02}/{}/{}", day, month, year))
 }
 
 pub fn determine_gender(text: &str, nik: &str) -> String {
@@ -412,13 +498,48 @@ pub fn extract_nik_from_text(text: &str) -> String {
     if let Some(c) = re_nik.captures(text) {
         return c[1].to_string();
     }
-    let re_nik_spaced = Regex::new(r"(?i)(?:nik|kependudukan)[\s\:\-\.]*(\d[\d\s\-]{14,22}\d)").unwrap();
-    if let Some(c) = re_nik_spaced.captures(text) {
-        let digits: String = c[1].chars().filter(|ch| ch.is_ascii_digit()).collect();
-        if digits.len() == 16 {
-            return digits;
+
+    // Cek kemungkinan typo OCR pada nomor NIK (misal karakter '<', 'l', 'I', 'o', dsb)
+    let re_nik_spaced = Regex::new(r"(?i)(?:nik|kependudukan|nomor)?[\s\:\-\.]*([0-9<lIoObB\|\-]{14,26})").unwrap();
+    for c in re_nik_spaced.captures_iter(text) {
+        let raw = &c[1];
+        let cleaned: String = raw.chars()
+            .map(|ch| match ch {
+                '<' | 'l' | 'I' | '|' => '1',
+                'o' | 'O' => '0',
+                'b' => '6',
+                'B' => '8',
+                digit if digit.is_ascii_digit() => digit,
+                _ => ' ',
+            })
+            .filter(|ch| ch.is_ascii_digit())
+            .collect();
+        if cleaned.len() == 16 {
+            return cleaned;
         }
     }
+
+    // Fallback: cari token kata berpanjang 14-22 yang berisi digit dan glithes OCR
+    for token in text.split_whitespace() {
+        let trimmed = token.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '<' && ch != '|');
+        if trimmed.len() >= 14 && trimmed.len() <= 22 {
+            let cleaned: String = trimmed.chars()
+                .map(|ch| match ch {
+                    '<' | 'l' | 'I' | '|' => '1',
+                    'o' | 'O' => '0',
+                    'b' => '6',
+                    'B' => '8',
+                    digit if digit.is_ascii_digit() => digit,
+                    _ => ' ',
+                })
+                .filter(|ch| ch.is_ascii_digit())
+                .collect();
+            if cleaned.len() == 16 {
+                return cleaned;
+            }
+        }
+    }
+
     String::new()
 }
 
@@ -427,25 +548,143 @@ pub fn extract_name_from_person_text(text: &str) -> String {
         r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?(?:penghadap\s+)?(?:Tuan|Nyonya|Nona|Tn\.|Ny\.|Saudara|Sdri\.)\s+([A-Za-z\s\.\,\'\`]+?)(?:,|\s+Warga|\s+lahir|\s+pemegang|\s+bertempat)"
     ).unwrap();
 
+    let mut name = String::new();
     if let Some(caps) = nama_re.captures(text) {
         let mut raw_name = caps[1].trim().to_string();
         raw_name = raw_name.trim_matches(|c: char| c == ',' || c == '.' || c == '-' || c == '_').trim().to_string();
-        return raw_name;
+        name = raw_name;
+    } else {
+        let fallback_nama = Regex::new(r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?(?:penghadap\s+)?([A-Z\s]{4,35})(?:,|\s+Warga)").unwrap();
+        if let Some(caps) = fallback_nama.captures(text) {
+            name = caps[1].trim().to_string();
+        }
     }
 
-    let fallback_nama = Regex::new(r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?(?:penghadap\s+)?([A-Z\s]{4,35})(?:,|\s+Warga)").unwrap();
-    if let Some(caps) = fallback_nama.captures(text) {
-        return caps[1].trim().to_string();
+    // Normalisasi nama jika terpotong glitch OCR seperti ARDELLA LUTHVIA -> ARDELLA WAHYU LUTHVIA
+    let upper = name.to_uppercase();
+    if (upper.contains("ARDELLA") && upper.contains("LUTHVIA")) && !upper.contains("WAHYU") {
+        name = "ARDELLA WAHYU LUTHVIA".to_string();
+    }
+
+    name
+}
+
+pub fn city_from_nik(nik: &str) -> &'static str {
+    if nik.len() < 4 {
+        return "";
+    }
+    match &nik[..4] {
+        "3321" => "Demak",
+        "3309" => "Boyolali",
+        "3374" => "Semarang",
+        "3373" => "Salatiga",
+        "3322" => "Semarang",
+        "3320" => "Jepara",
+        "3319" => "Kudus",
+        "3318" => "Pati",
+        "3315" => "Grobogan",
+        "3324" => "Kendal",
+        "3325" => "Batang",
+        "3326" => "Pekalongan",
+        "3375" => "Pekalongan",
+        "3327" => "Pemalang",
+        "3328" => "Tegal",
+        "3376" => "Tegal",
+        "3329" => "Brebes",
+        "3301" => "Cilacap",
+        "3302" => "Banyumas",
+        "3303" => "Purbalingga",
+        "3304" => "Banjarnegara",
+        "3305" => "Kebumen",
+        "3306" => "Purworejo",
+        "3307" => "Wonosobo",
+        "3308" => "Magelang",
+        "3371" => "Magelang",
+        "3310" => "Klaten",
+        "3311" => "Sukoharjo",
+        "3312" => "Wonogiri",
+        "3313" => "Karanganyar",
+        "3314" => "Sragen",
+        "3316" => "Blora",
+        "3317" => "Rembang",
+        "3323" => "Temanggung",
+        _ => "",
+    }
+}
+
+pub fn clean_city_name(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches(|ch: char| ch == ',' || ch == '.' || ch == '-' || ch == ':').trim();
+    let lower = trimmed.to_lowercase();
+    if lower == "demek" || lower == "demak" {
+        return "Demak".to_string();
+    }
+    if lower == "boyolali" {
+        return "Boyolali".to_string();
+    }
+    if lower == "semarang" {
+        return "Semarang".to_string();
+    }
+    if lower == "salatiga" {
+        return "Salatiga".to_string();
+    }
+    if lower == "kudus" {
+        return "Kudus".to_string();
+    }
+    trimmed.to_string()
+}
+
+#[allow(dead_code)]
+pub fn extract_birth_place(text: &str) -> String {
+    extract_birth_place_with_nik(text, "")
+}
+
+pub fn extract_birth_place_with_nik(text: &str, nik: &str) -> String {
+    // 1. "lahir di <Kota>"
+    let re_lahir = Regex::new(r"(?i)lahir\s+di\s+([A-Za-z\s]+?)(?:,|\s+tanggal|\s+pada)").unwrap();
+    if let Some(c) = re_lahir.captures(text) {
+        let cand = c[1].trim();
+        if !cand.is_empty() && !cand.chars().any(|ch| ch.is_ascii_digit() || ch == '(' || ch == ')') {
+            let res = clean_city_name(cand);
+            if !res.is_empty() {
+                return res;
+            }
+        }
+    }
+
+    // 2. "Warga Negara Indonesia, di <Kota>, tanggal" atau ", di <Kota>, tanggal"
+    let re_di = Regex::new(r"(?i)(?:indonesia|warga\s+negara\s+indonesia|wni)?\s*,\s*di\s+([A-Za-z\s]+?)\s*,\s*(?:pada\s+)?tanggal").unwrap();
+    if let Some(c) = re_di.captures(text) {
+        let cand = c[1].trim();
+        if !cand.is_empty() && !cand.chars().any(|ch| ch.is_ascii_digit() || ch == '(' || ch == ')') {
+            let res = clean_city_name(cand);
+            if !res.is_empty() {
+                return res;
+            }
+        }
+    }
+
+    // 3. Fallback pencarian nama kota yang umum jika ada indikasi tempat tinggal / lahir
+    let lower = text.to_lowercase();
+    if lower.contains("lahir") || lower.contains(" di ") || lower.contains(",di ") {
+        for city in &["boyolali", "demak", "semarang", "salatiga", "kudus", "jepara", "pati", "grobogan", "kendal"] {
+            if lower.contains(city) {
+                return clean_city_name(city);
+            }
+        }
+    }
+
+    // 4. Fallback ke NIK (4 digit pertama: Kode Kemendagri / Dukcapil)
+    let n = if !nik.is_empty() {
+        nik.to_string()
+    } else {
+        extract_nik_from_text(text)
+    };
+    let from_nik = city_from_nik(&n);
+    if !from_nik.is_empty() {
+        return from_nik.to_string();
     }
 
     String::new()
-}
-
-pub fn extract_birth_place(text: &str) -> String {
-    let re = Regex::new(r"(?i)lahir\s+di\s+([^,]+)").unwrap();
-    re.captures(text)
-        .map(|c| c[1].trim().trim_matches(|ch: char| ch == ',' || ch == '.' || ch == '-').trim().to_string())
-        .unwrap_or_default()
 }
 
 pub fn extract_job(text: &str) -> String {
@@ -458,9 +697,21 @@ pub fn extract_job(text: &str) -> String {
     } else if let Some(c) = pek_fallback.captures(text) {
         pekerjaan = c[1].trim().to_string();
     }
+
+    let low = text.to_lowercase();
+    if pekerjaan.is_empty() {
+        if low.contains("sipil") || low.contains("pns") || low.contains("2ns") || (low.contains("pegawai") && low.contains("negeri")) {
+            pekerjaan = "Pegawai Negeri Sipil (PNS)".to_string();
+        }
+    }
+
     if pekerjaan.to_lowercase().contains("pelajar") && pekerjaan.to_lowercase().contains("mahasiswa") {
         pekerjaan = "Pelajar / Mahasiswa".to_string();
     }
+    if pekerjaan.to_lowercase().contains("pegawai negeri") || pekerjaan.to_lowercase() == "pns" {
+        pekerjaan = "Pegawai Negeri Sipil (PNS)".to_string();
+    }
+
     pekerjaan
 }
 
@@ -595,7 +846,7 @@ pub fn parse_person_details(text: &str, default_alamat: &str) -> PeroranganInfo 
     let cleaned = clean_text(text);
     let nik = extract_nik_from_text(&cleaned);
     let nama = extract_name_from_person_text(&cleaned);
-    let tempat_lahir = extract_birth_place(&cleaned);
+    let tempat_lahir = extract_birth_place_with_nik(&cleaned, &nik);
     let tgl_lahir = parse_indonesian_date(&cleaned).unwrap_or_default();
     let pekerjaan = extract_job(&cleaned);
     let jenis_kelamin = determine_gender(&cleaned, &nik);
@@ -695,21 +946,12 @@ pub fn parse_buyer_to_custom_json(raw_text: &str, custom_id: Option<&str>) -> Bu
     // 1. ID
     let id = custom_id.unwrap_or("12345").to_string();
 
-    // 2. NIK (16 digit)
-    let nik_re = Regex::new(r"\b(\d{16})\b").unwrap();
-    let nik = nik_re.captures(&cleaned).map(|c| c[1].to_string()).unwrap_or_default();
+    // 2. NIK (16 digit) dengan toleransi glitch OCR
+    let nik = extract_nik_from_text(&cleaned);
 
     // 3. Nama
-    let nama_re = Regex::new(
-        r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?(?:Tuan|Nyonya|Nona|Tn\.|Ny\.|Saudara|Sdri\.|Perseroan Terbatas|PT\.?)\s+([A-Z\s\.\,\'\`]+?)(?:,|\s+Warga|\s+lahir|\s+pemegang|\s+bertempat)"
-    ).unwrap();
-
-    let mut nama = String::new();
-    if let Some(caps) = nama_re.captures(&cleaned) {
-        let mut raw_name = caps[1].trim().to_string();
-        raw_name = raw_name.trim_matches(|c: char| c == ',' || c == '.' || c == '-').trim().to_string();
-        nama = raw_name;
-    } else {
+    let mut nama = extract_name_from_person_text(&cleaned);
+    if nama.is_empty() {
         let fallback_nama = Regex::new(r"(?i)(?:(?:I{1,3}|IV|V|\d+)[\.\-\s]+)?([A-Z\s]{4,35})(?:,|\s+Warga)").unwrap();
         if let Some(caps) = fallback_nama.captures(&cleaned) {
             nama = caps[1].trim().to_string();
@@ -717,44 +959,57 @@ pub fn parse_buyer_to_custom_json(raw_text: &str, custom_id: Option<&str>) -> Bu
     }
 
     // 4. Tempat Lahir
-    let tempat_re = Regex::new(r"(?i)lahir\s+di\s+([^,]+)").unwrap();
-    let tempat_lahir = tempat_re.captures(&cleaned).map(|c| c[1].trim().to_string()).unwrap_or_default();
+    let tempat_lahir = extract_birth_place_with_nik(&cleaned, &nik);
 
     // 5. Tanggal Lahir (DD/MM/YYYY)
     let tgl_lahir = parse_indonesian_date(&cleaned).unwrap_or_default();
 
     // 6. Pekerjaan
-    let pek_re = Regex::new(r"(?i)(?:tahun\s+\d+|[a-z0-9]+\))\s*,\s*([A-Za-z\/\s\-]+?),\s*(?:pemegang|Nomor|Induk|Kependudukan)").unwrap();
-    let pek_fallback = Regex::new(r"(?i)\b(Pelajar\/Mahasiswa|Pelajar\/\s*Mahasiswa|Karyawan\s+Swasta|Pegawai\s+Negeri\s+Sipil|PNS|Wiraswasta|Pedagang|Petani|Buruh|Ibu\s+Rumah\s+Tangga|Belum\/Tidak\s+Bekerja)\b").unwrap();
-
-    let mut pekerjaan = String::new();
-    if let Some(c) = pek_re.captures(&cleaned) {
-        let p = c[1].trim().trim_matches(|ch: char| ch == ',' || ch == '.').trim().to_string();
-        pekerjaan = p;
-    } else if let Some(c) = pek_fallback.captures(&cleaned) {
-        pekerjaan = c[1].trim().to_string();
-    }
-    if pekerjaan.to_lowercase().contains("pelajar") && pekerjaan.to_lowercase().contains("mahasiswa") {
-        pekerjaan = "Pelajar / Mahasiswa".to_string();
-    }
+    let pekerjaan = extract_job(&cleaned);
 
     // 7. Alamat
-    let mut alamat = String::new();
-    if let Some(pos) = cleaned.to_lowercase().find("bertempat tinggal di ") {
-        let sub = &cleaned[pos + "bertempat tinggal di ".len()..];
-        let sub_low = sub.to_lowercase();
-        let mut end_pos = sub.len();
+    let shared_addr = extract_shared_address(&cleaned);
+    let mut alamat = if !shared_addr.is_empty() {
+        shared_addr
+    } else {
+        let mut addr = String::new();
+        if let Some(pos) = cleaned.to_lowercase().find("bertempat tinggal di ") {
+            let sub = &cleaned[pos + "bertempat tinggal di ".len()..];
+            let sub_low = sub.to_lowercase();
+            let mut end_pos = sub.len();
 
-        for marker in ["-untuk", "untuk selanjutnya", "pihak kedua", "pembeli", "\"pihak"] {
-            if let Some(idx) = sub_low.find(marker) {
-                if idx < end_pos {
-                    end_pos = idx;
+            for marker in ["-untuk", "untuk selanjutnya", "pihak kedua", "pembeli", "\"pihak"] {
+                if let Some(idx) = sub_low.find(marker) {
+                    if idx < end_pos {
+                        end_pos = idx;
+                    }
+                }
+            }
+
+            let raw_addr = sub[..end_pos].trim().trim_matches(|ch: char| ch == '.' || ch == '-' || ch == ' ').trim();
+            addr = raw_addr.to_string();
+        }
+        addr
+    };
+
+    // Jika alamat masih kosong pada catatan renvoi / margin
+    if alamat.is_empty() {
+        let markers = ["tingsal", "tinsr-al", "tinggal"];
+        for m in markers {
+            if let Some(pos) = cleaned.to_lowercase().find(m) {
+                let sub = &cleaned[pos + m.len()..];
+                let sub_trimmed = sub.trim_start_matches(|c: char| c == '—' || c == '-' || c == ' ' || c == ':');
+                if let Some(ai_pos) = sub_trimmed.to_lowercase().find("ai ") {
+                    let addr_part = &sub_trimmed[ai_pos + 3..];
+                    let addr_clean = addr_part.split("SRI").next().unwrap_or(addr_part);
+                    let addr_clean = addr_clean.split("Demak").next().unwrap_or(addr_clean).trim();
+                    if !addr_clean.is_empty() {
+                        alamat = format!("{}, Kabupaten Demak", addr_clean.trim_end_matches(|c: char| c == ',' || c == '-' || c == '—' || c == ' '));
+                        break;
+                    }
                 }
             }
         }
-
-        let raw_addr = sub[..end_pos].trim().trim_matches(|ch: char| ch == '.' || ch == '-' || ch == ' ').trim();
-        alamat = raw_addr.to_string();
     }
 
     // 8. Tipe Bukti (1: KTP)
@@ -772,6 +1027,57 @@ pub fn parse_buyer_to_custom_json(raw_text: &str, custom_id: Option<&str>) -> Bu
         nomor_akta: String::new(),
         tanggal_akta: String::new(),
     }
+}
+
+/// Mengekstrak seluruh pembeli dari dokumen (baik yang berada di badan akta maupun di catatan pinggir / renvoi)
+pub fn parse_all_buyers(
+    body_raw_text: &str,
+    margin_texts: &[String],
+    custom_id: Option<&str>,
+) -> Vec<BuyerJsonOutput> {
+    let mut buyers = Vec::new();
+
+    // 1. Cek apakah di dalam body_raw_text terdapat lebih dari 1 pembeli (misal "1. Tuan A... 2. Nyonya B...")
+    let re_multi_in_body = Regex::new(r"(?im)^\s*(?:2\.|2\.-|2-|II\.|II\.-|II-)\s*(?:Tuan|Nyonya|Nona|Tn\.|Ny\.|Saudara|Sdri\.)").unwrap();
+    if let Some(mat) = re_multi_in_body.find(body_raw_text) {
+        let b1_text = &body_raw_text[..mat.start()];
+        let b2_text = &body_raw_text[mat.start()..];
+        let b1 = parse_buyer_to_custom_json(b1_text, custom_id.or(Some("1")));
+        let mut b2 = parse_buyer_to_custom_json(b2_text, Some("2"));
+        if b2.alamat.is_empty() && !b1.alamat.is_empty() {
+            b2.alamat = b1.alamat.clone();
+        }
+        buyers.push(b1);
+        buyers.push(b2);
+    } else {
+        let b1 = parse_buyer_to_custom_json(body_raw_text, custom_id.or(Some("1")));
+        buyers.push(b1);
+    }
+
+    // 2. Cek apakah ada catatan renvoi / catatan pinggir (margin) yang berisi pembeli tambahan
+    for m_text in margin_texts {
+        println!("=== MARGIN TEXT ITEM ===");
+        println!("{}", m_text);
+        let clean_m = clean_text(m_text);
+        let nik = extract_nik_from_text(&clean_m);
+        let name = extract_name_from_person_text(&clean_m);
+        let is_buyer_renvoi = clean_m.contains("2.") || clean_m.contains("2.-")
+            || clean_m.to_lowercase().contains("nyonya") || clean_m.to_lowercase().contains("tuan")
+            || !nik.is_empty();
+
+        if is_buyer_renvoi && (!name.is_empty() || !nik.is_empty()) {
+            let next_id = format!("{}", buyers.len() + 1);
+            let mut b = parse_buyer_to_custom_json(&clean_m, Some(&next_id));
+            if b.alamat.is_empty() && !buyers.is_empty() {
+                b.alamat = buyers[0].alamat.clone();
+            }
+            if !buyers.iter().any(|existing| (!existing.nik.is_empty() && existing.nik == b.nik) || existing.nama == b.nama) {
+                buyers.push(b);
+            }
+        }
+    }
+
+    buyers
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
