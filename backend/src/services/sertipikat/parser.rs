@@ -23,6 +23,18 @@ pub fn clean_text(input: &str) -> String {
     re_spaces.replace_all(input, " ").trim().to_string()
 }
 
+/// Normalisasi teks OCR nomor berkas yang sering mengalami kesalahan glif/kompresi (misal 'æ' -> '69')
+pub fn sanitize_berkas_ocr(line: &str) -> String {
+    let mut s = line.to_string();
+    // 'æ' atau 'Æ' adalah artefak gabungan angka '6' dan '9' pada dokumen scan BPN
+    s = s.replace('æ', "69");
+    s = s.replace('Æ', "69");
+    // 'm26', 'mx', 'm026', 'm2026', 'r2026' sering muncul untuk tahun / 2026
+    let re_year_fix = Regex::new(r"/\s*(?:m26|mx|m026|m2026|r2026)\b").unwrap();
+    s = re_year_fix.replace_all(&s, "/ 2026").to_string();
+    s
+}
+
 pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     let raw_text = ocr_lines.join("\n");
 
@@ -30,52 +42,75 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     let mut nomor_berkas = String::new();
     let mut tahun_berkas = String::from("2026");
 
-    let re_berkas_full = Regex::new(r"(?i)\b(?:no\.?|nomor)?\s*(?:berkas)?\s*[:\s]*([0-9]{3,8})\s*/\s*(20\d{2}|19\d{2})\b").unwrap();
+    let re_slash_year = Regex::new(r"(?i)(?:^|[^0-9])([0-9]{3,8})\s*/\s*(20\d{2}|19\d{2}|2\d)\b").unwrap();
+    let re_berkas_full = Regex::new(r"(?i)\b(?:no\.?|nomor)?\s*(?:berkas)?\s*[:\s]*([0-9]{3,8})\s*/\s*(20\d{2}|19\d{2}|2\d)\b").unwrap();
     let re_berkas_keyword = Regex::new(r"(?i)berkas\s*[:\s]*([0-9]{3,8})").unwrap();
 
+    let is_tanggungan_line = |l: &str| {
+        let low = l.to_lowercase();
+        low.contains("tanggungan")
+            || low.contains("roya")
+            || low.contains("peringkat")
+            || low.contains("pemberian")
+            || low.contains("skds")
+            || low.contains("scpu")
+    };
+
+    // Cari per baris tunggal
     for line in ocr_lines {
-        let low = line.to_lowercase();
-        if low.contains("tanggungan") || low.contains("roya") || low.contains("peringkat") || low.contains("pemberian") {
+        if is_tanggungan_line(line) {
             continue;
         }
-        if let Some(caps) = re_berkas_full.captures(line) {
+        let sanitized = sanitize_berkas_ocr(line);
+        if let Some(caps) = re_slash_year.captures(&sanitized) {
             nomor_berkas = caps[1].to_string();
-            tahun_berkas = caps[2].to_string();
+            let yr = caps[2].to_string();
+            tahun_berkas = if yr.len() == 2 { format!("20{}", yr) } else { yr };
+            break;
+        }
+        if let Some(caps) = re_berkas_full.captures(&sanitized) {
+            nomor_berkas = caps[1].to_string();
+            let yr = caps[2].to_string();
+            tahun_berkas = if yr.len() == 2 { format!("20{}", yr) } else { yr };
             break;
         }
     }
 
-    // Cek kombinasi baris berdekatan (jika terpisah baris saat OCR)
+    // Cek kombinasi baris berdekatan (jika terpisah baris saat OCR, misal "No Berkas :" lalu "51569 / 2026")
     if nomor_berkas.is_empty() {
         for idx in 0..ocr_lines.len().saturating_sub(1) {
-            let combined = format!("{} {}", ocr_lines[idx], ocr_lines[idx + 1]);
-            let low = combined.to_lowercase();
-            if low.contains("tanggungan") || low.contains("roya") || low.contains("peringkat") || low.contains("pemberian") {
+            if is_tanggungan_line(&ocr_lines[idx]) || is_tanggungan_line(&ocr_lines[idx + 1]) {
                 continue;
             }
-            if let Some(caps) = re_berkas_full.captures(&combined) {
+            let combined = format!("{} {}", ocr_lines[idx], ocr_lines[idx + 1]);
+            let sanitized = sanitize_berkas_ocr(&combined);
+            if let Some(caps) = re_slash_year.captures(&sanitized) {
                 nomor_berkas = caps[1].to_string();
-                tahun_berkas = caps[2].to_string();
+                let yr = caps[2].to_string();
+                tahun_berkas = if yr.len() == 2 { format!("20{}", yr) } else { yr };
                 break;
             }
         }
     }
 
+    // Fallback teks multiline keseluruhan
     if nomor_berkas.is_empty() {
+        let sanitized_raw = sanitize_berkas_ocr(&raw_text);
         let re_berkas_multiline = Regex::new(r"(?i)\b(?:no\.?|nomor)?\s*berkas\s*[:\s]*([0-9]{3,8})\s*/\s*(20\d{2}|19\d{2})\b").unwrap();
-        if let Some(caps) = re_berkas_multiline.captures(&raw_text) {
+        if let Some(caps) = re_berkas_multiline.captures(&sanitized_raw) {
             nomor_berkas = caps[1].to_string();
             tahun_berkas = caps[2].to_string();
         }
     }
 
+    // Fallback keyword berkas tanpa tahun
     if nomor_berkas.is_empty() {
         for line in ocr_lines {
-            let low = line.to_lowercase();
-            if low.contains("tanggungan") || low.contains("roya") {
+            if is_tanggungan_line(line) {
                 continue;
             }
-            if let Some(caps) = re_berkas_keyword.captures(line) {
+            let sanitized = sanitize_berkas_ocr(line);
+            if let Some(caps) = re_berkas_keyword.captures(&sanitized) {
                 nomor_berkas = caps[1].to_string();
                 break;
             }
@@ -85,16 +120,18 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     // 2. NIB (Nomor Identifikasi Bidang Tanah) & NIB Elektronik (14 digit tanpa titik)
     let mut nib = String::new();
     let mut nib_elektronik = String::new();
-    let re_nib = Regex::new(r"(?i)\bNIB\s*[:\s]*([0-9][0-9.\s]{10,20}[0-9])\b").unwrap();
+    let re_nib = Regex::new(r"(?i)\bNIB\s*[:\s]*([0-9][0-9.\s]{8,24}[0-9])\b").unwrap();
     if let Some(caps) = re_nib.captures(&raw_text) {
         nib = clean_text(&caps[1]);
         let digits_only: String = caps[1].chars().filter(|c| c.is_ascii_digit()).collect();
         if digits_only.len() >= 13 && digits_only.len() <= 14 {
             nib_elektronik = digits_only;
+        } else if digits_only.len() >= 12 && digits_only.len() < 13 {
+            nib_elektronik = digits_only;
         }
     }
 
-    if nib_elektronik.is_empty() {
+    if nib_elektronik.len() < 13 {
         let re_14_digits = Regex::new(r"\b(11\d{11,12})\b").unwrap();
         if let Some(caps) = re_14_digits.captures(&raw_text) {
             nib_elektronik = caps[1].to_string();
@@ -104,20 +141,28 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
         }
     }
 
-    // 3. Nomor Seri Blangko Sertipikat Elektronik (contoh: B1209978)
+    // 3. Nomor Seri Blangko Sertipikat Elektronik (contoh: B1209978 / B1209515)
     let mut nomor_seri_blangko = String::new();
-    let re_b_series = Regex::new(r"\b([A-Z]\d{6,8})\b").unwrap();
+    let re_b_series = Regex::new(r"\b([A-Z8]\d{6,8})\b").unwrap();
 
     for (idx, line) in ocr_lines.iter().enumerate() {
         let low = line.to_lowercase();
         if low.contains("seri") || low.contains("blangko") || low.contains("cetak") || low.contains("elektronik") {
             if let Some(caps) = re_b_series.captures(line) {
-                nomor_seri_blangko = caps[1].to_string();
+                let mut val = caps[1].to_string();
+                if val.starts_with('8') {
+                    val.replace_range(0..1, "B");
+                }
+                nomor_seri_blangko = val;
                 break;
             }
             if idx + 1 < ocr_lines.len() {
                 if let Some(caps) = re_b_series.captures(&ocr_lines[idx + 1]) {
-                    nomor_seri_blangko = caps[1].to_string();
+                    let mut val = caps[1].to_string();
+                    if val.starts_with('8') {
+                        val.replace_range(0..1, "B");
+                    }
+                    nomor_seri_blangko = val;
                     break;
                 }
             }
@@ -125,7 +170,8 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     }
 
     if nomor_seri_blangko.is_empty() {
-        if let Some(caps) = re_b_series.captures(&raw_text) {
+        let re_b_strict = Regex::new(r"\b(B\d{6,8})\b").unwrap();
+        if let Some(caps) = re_b_strict.captures(&raw_text) {
             nomor_seri_blangko = caps[1].to_string();
         }
     }
@@ -134,17 +180,27 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     let mut jenis_hak = String::new();
     let re_hak = Regex::new(r"(?i)jenis\s*hak\s*[:\s]*([A-Za-z\s]+?)(?:NIB|No|Desa|Luas|Tanggal|\n|$)").unwrap();
     if let Some(caps) = re_hak.captures(&raw_text) {
-        jenis_hak = clean_text(&caps[1]);
+        let h = clean_text(&caps[1]);
+        let low_h = h.to_lowercase();
+        if low_h.contains("guna") {
+            jenis_hak = "Hak Guna Bangunan".to_string();
+        } else if low_h.contains("milik") {
+            jenis_hak = "Hak Milik".to_string();
+        } else if low_h.contains("pakai") {
+            jenis_hak = "Hak Pakai".to_string();
+        } else {
+            jenis_hak = h;
+        }
     } else {
         for line in ocr_lines {
             let low = line.to_lowercase();
-            if low.contains("guna bangunan") {
+            if low.contains("guna bangunan") || low.contains("guna ba") || (low.contains("hak") && low.contains("guna")) {
                 jenis_hak = "Hak Guna Bangunan".to_string();
                 break;
-            } else if low.contains("hak milik") {
+            } else if low.contains("hak milik") || (low.contains("milik") && !low.contains("pemilik")) {
                 jenis_hak = "Hak Milik".to_string();
                 break;
-            } else if low.contains("hak pakai") {
+            } else if low.contains("hak pakai") || low.contains("pakai") {
                 jenis_hak = "Hak Pakai".to_string();
                 break;
             }
@@ -160,9 +216,31 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
 
     // 6. NTPN
     let mut ntpn = String::new();
-    let re_ntpn = Regex::new(r"(?i)NTPN\s*[:\s]*([A-Z0-9]{10,20})\b").unwrap();
-    if let Some(caps) = re_ntpn.captures(&raw_text) {
-        ntpn = caps[1].to_string();
+    let re_ntpn_explicit = Regex::new(r"(?i)\b(?:NTPN|MTPN|WPN|NTFW|N-rzg)\s*[:\s]*([A-Z0-9]{12,20})\b").unwrap();
+    if let Some(caps) = re_ntpn_explicit.captures(&raw_text) {
+        let mut val = caps[1].to_string();
+        if val.starts_with('Q') {
+            val.replace_range(0..1, "8");
+        }
+        ntpn = val;
+    } else {
+        // Fallback: cari baris yang memuat kode alfanumerik 14-16 karakter (NTPN pembayaran)
+        for line in ocr_lines {
+            if is_tanggungan_line(line) {
+                continue;
+            }
+            let re_ntpn_cand = Regex::new(r"(?:^|[:\s])\s*([0-9Q][0-9A-Z]{13,16})\b").unwrap();
+            if let Some(caps) = re_ntpn_cand.captures(line) {
+                let mut cand = caps[1].to_string();
+                if !cand.starts_with("11") && cand.len() >= 14 {
+                    if cand.starts_with('Q') {
+                        cand.replace_range(0..1, "8");
+                    }
+                    ntpn = cand;
+                    break;
+                }
+            }
+        }
     }
 
     // 7. Desa, Kecamatan, Kabupaten, Provinsi
@@ -194,19 +272,54 @@ pub fn parse_sertipikat_text(ocr_lines: &[String]) -> SertipikatData {
     // 8. Nama Pemilik
     let mut nama_pemilik = String::new();
     let mut capture_pemilik = false;
+    let re_prop = Regex::new(r"(?i)\bPROP[#*A-Za-z0-9]+Y\b").unwrap();
+
     for line in ocr_lines {
         let low = line.to_lowercase();
-        if low.contains("nama pemilik") {
+        if (low.contains("nama") && (low.contains("pemi") || low.contains("perni")))
+            || low.contains("pemilik")
+            || low.contains("pernijik")
+            || low.contains("pemijjk")
+        {
             capture_pemilik = true;
             continue;
         }
         if capture_pemilik {
             let trimmed = clean_text(line);
-            if !trimmed.is_empty() && !trimmed.starts_with("Catatan") && !trimmed.starts_with("Petunjuk") {
-                nama_pemilik = trimmed.trim_start_matches(|c| c == '•' || c == '-' || c == '*' || c == ' ').to_string();
+            if !trimmed.is_empty()
+                && !trimmed.starts_with("Catatan")
+                && !trimmed.starts_with("Petunjuk")
+                && !trimmed.starts_with("Penunjuk")
+            {
+                let cleaned = trimmed
+                    .trim_start_matches(|c| c == '•' || c == '-' || c == '*' || c == ' ')
+                    .replace('#', "E")
+                    .replace('*', "R");
+                let cleaned = re_prop.replace_all(&cleaned, "PROPERTY").to_string();
+                nama_pemilik = clean_text(&cleaned);
                 break;
             }
         }
+    }
+
+    if nama_pemilik.is_empty() {
+        for line in ocr_lines {
+            let low = line.to_lowercase();
+            if (low.contains("pt.") || low.contains("pt ")) && !low.contains("ppat") {
+                let trimmed = clean_text(line);
+                let cleaned = trimmed
+                    .trim_start_matches(|c| c == '•' || c == '-' || c == '*' || c == ' ')
+                    .replace('#', "E")
+                    .replace('*', "R");
+                let cleaned = re_prop.replace_all(&cleaned, "PROPERTY").to_string();
+                nama_pemilik = clean_text(&cleaned);
+                break;
+            }
+        }
+    }
+
+    if let Some(pos) = nama_pemilik.to_lowercase().find("berkedudu") {
+        nama_pemilik = clean_text(&nama_pemilik[..pos]);
     }
 
     SertipikatData {
@@ -264,5 +377,39 @@ mod tests {
         assert_eq!(res.luas_m2, "60");
         assert!(res.nama_pemilik.contains("PT YUDHA MUDA SAKTI"));
         assert_eq!(res.ntpn, "820260915145677");
+    }
+
+    #[test]
+    fn test_parse_scan_ocr_glitches() {
+        let lines = vec![
+            "KEMENTERIAN AGRARIA DAN TATA RUANG/".to_string(),
+            "BADAN PERTANAHAN NASIONAL".to_string(),
+            "KANTOR PERTANAHAN KABUPATEN DEMAK".to_string(),
+            "PENGECEKAN SERTIPIKAT".to_string(),
+            ": 515æ/2026".to_string(),
+            ": 820260909112959 09092026 1029.31".to_string(),
+            "• Jalis Hak : Hak Guna Ba".to_string(),
+            "• NIB : 1109.000056341.0".to_string(),
+            "• Kelurahan Mangunjiwan Kecamatan Demak".to_string(),
+            "Demak Provinsi Jawa Tengah".to_string(),
+            "• Luas : 73 m2".to_string(),
+            "Narna Pemilik".to_string(),
+            "• PT. AMANAH BERKAH PROP#RfY".to_string(),
+            "berkedudukan di DEMAK".to_string(),
+            "Informasi Blangko Sertipikat Elektronik".to_string(),
+            "Sertipikat elektronik dicetak dengan nomor seri".to_string(),
+            "81209515".to_string(),
+        ];
+
+        let res = parse_sertipikat_text(&lines);
+        assert_eq!(res.nomor_berkas, "51569");
+        assert_eq!(res.tahun_berkas, "2026");
+        assert_eq!(res.nib_elektronik, "11090000563410");
+        assert_eq!(res.nomor_seri_blangko, "B1209515");
+        assert_eq!(res.jenis_hak, "Hak Guna Bangunan");
+        assert_eq!(res.desa, "Mangunjiwan");
+        assert_eq!(res.kecamatan, "Demak");
+        assert_eq!(res.ntpn, "820260909112959");
+        assert!(res.nama_pemilik.contains("AMANAH BERKAH"));
     }
 }

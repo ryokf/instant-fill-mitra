@@ -190,7 +190,7 @@ pub async fn extract_sertipikat_handler(multipart: Multipart) -> Response {
     println!("[API: Sertipikat] Memproses berkas Sertipikat: {} ({} bytes)...", filename, bytes.len());
 
     let result = execute_winrt_task("sertipikat_upload", &filename, &bytes, |path| async move {
-        process_sertipikat_file(&path, 3.0).await
+        process_sertipikat_file(&path, 1.8).await
     }).await;
 
     match result {
